@@ -159,4 +159,10 @@ Claude 调用次数: 2
 - **防刷屏仍被踢**  
   尝试减小 `CHAT_DELAY_MS` 的值（如改为 1000），或检查服务器反刷屏插件的具体规则。
 
+## 🔧 特殊说明
+- **gemini**
+  使用的是openai协议，后面会用回gemini协议
+
+![这是一张图片](https://img.fastmirror.net/s/2026/02/25/699ef01cd79a1.jpg)
+
 欢迎提交 Issue 或 Pull Request 改进本项目！# Minecraft Chat Bot
