@@ -1,0 +1,92 @@
+[2026-02-25T09:53:14.991Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:14.993Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:14.994Z] [INFO] Bot disconnected
+[2026-02-25T09:53:14.994Z] [INFO] 尝试重连 (1/∞)，等待 5 秒...
+[2026-02-25T09:53:14.997Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:14.999Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:20.013Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:20.014Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:20.015Z] [INFO] Bot disconnected
+[2026-02-25T09:53:20.015Z] [INFO] 尝试重连 (2/∞)，等待 5 秒...
+[2026-02-25T09:53:20.016Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:20.017Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:25.049Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:25.051Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:25.052Z] [INFO] Bot disconnected
+[2026-02-25T09:53:25.054Z] [INFO] 尝试重连 (3/∞)，等待 5 秒...
+[2026-02-25T09:53:25.059Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:25.064Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:30.066Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:30.067Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:30.067Z] [INFO] Bot disconnected
+[2026-02-25T09:53:30.068Z] [INFO] 尝试重连 (4/∞)，等待 5 秒...
+[2026-02-25T09:53:30.069Z] [INFO] {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:30.069Z] [ERROR] Bot error {"code":"ECONNREFUSED"}
+[2026-02-25T09:53:36.590Z] [INFO] Logged in as DeepBot
+[2026-02-25T09:53:36.641Z] [INFO] 服务器消息: Unknown or incomplete command, see below for error
+[2026-02-25T09:53:36.643Z] [INFO] 服务器消息: login 781102<--[HERE]
+[2026-02-25T09:54:09.000Z] [INFO] 服务器消息: <dengjiewei> #chatgpt 给我一组草方块
+[2026-02-25T09:54:09.026Z] [INFO] [GPT] 调用 URL: https://new.lemonapi.site/v1/chat/completions
+[2026-02-25T09:54:09.048Z] [INFO] 服务器消息: <DeepBot> 已收到，正在思考
+[2026-02-25T09:54:10.991Z] [INFO] [GPT] 原始响应: {
+  "id": "chatcmpl-DD5uLGFUnZQpoWWlNEXpwaT0rSDpq",
+  "object": "chat.completion",
+  "created": 1772013345,
+  "model": "gpt-4o",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"commands\":[\"/give dengjiewei grass_block 64\"], \"chat\":\"已为你准备了一组草方块\"}",
+        "refusal": null,
+        "annotations": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 314,
+    "completion_tokens": 28,
+    "total_tokens": 342,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "system_fingerprint": "fp_e9b9b028d7"
+}
+
+[2026-02-25T09:54:10.993Z] [INFO] 执行命令: /give dengjiewei grass_block 64
+[2026-02-25T09:54:11.012Z] [INFO] 服务器消息: Gave 64 [Grass Block] to dengjiewei
+[2026-02-25T09:54:11.601Z] [INFO] [2026-02-25T09:54:11.601Z] 开始按行发送，共 1 行，行间延迟 1000ms
+[2026-02-25T09:54:11.602Z] [INFO] [2026-02-25T09:54:11.602Z] 发送行 #1，长度 11，内容预览: 已为你准备了一组草方块
+[2026-02-25T09:54:11.608Z] [INFO] 服务器消息: <DeepBot> 已为你准备了一组草方块
+[2026-02-25T09:54:31.446Z] [INFO] 捕获 SIGINT
+[2026-02-25T09:54:31.447Z] [INFO] 
+========== Token 使用统计 ==========
+[2026-02-25T09:54:31.448Z] [INFO] Deepseek 调用次数: 0
+[2026-02-25T09:54:31.449Z] [INFO] Gemini 调用次数: 0
+[2026-02-25T09:54:31.450Z] [INFO] GPT 调用次数: 1
+[2026-02-25T09:54:31.451Z] [INFO] Grok 调用次数: 0
+[2026-02-25T09:54:31.451Z] [INFO] Claude 调用次数: 0
+[2026-02-25T09:54:31.451Z] [INFO] 累计 token (五者合计): 342
+[2026-02-25T09:54:31.452Z] [INFO] =====================================
+
+[2026-02-25T09:54:31.453Z] [INFO] 
+========== Token 使用统计 ==========
+[2026-02-25T09:54:31.454Z] [INFO] Deepseek 调用次数: 0
+[2026-02-25T09:54:31.455Z] [INFO] Gemini 调用次数: 0
+[2026-02-25T09:54:31.456Z] [INFO] GPT 调用次数: 1
+[2026-02-25T09:54:31.456Z] [INFO] Grok 调用次数: 0
+[2026-02-25T09:54:31.457Z] [INFO] Claude 调用次数: 0
+[2026-02-25T09:54:31.458Z] [INFO] 累计 token (五者合计): 342
+[2026-02-25T09:54:31.459Z] [INFO] =====================================
+
