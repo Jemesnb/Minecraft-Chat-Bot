@@ -32,7 +32,7 @@
 - Node.js (v14 或更高，附带 npm)
 
 ### 安装依赖
-无需手动操作，Python 启动器会在首次运行时自动执行 `npm install`。
+无需手动操作，Python 启动器会在首次运行时自动执行 `npm install`（有可能会失效）。
 
 ## ⚙️ 配置
 
@@ -105,7 +105,7 @@ python main.py
 ### 私聊
 使用 `/msg` 或 `/tell` 悄悄与机器人对话：
 ```
-/msg DeepBot #deepseek 末影龙怎么召唤？
+/msg Bot名称 #deepseek 末影龙怎么召唤？
 ```
 机器人会以私聊方式回复（命令执行除外）。
 
@@ -148,7 +148,7 @@ Claude 调用次数: 2
 ## 🔧 故障排除
 
 - **连接超时/ECONNRESET**  
-  网络不稳定或服务器问题，自动重连会处理。可尝试增大 `checkTimeoutInterval`（需修改代码）。
+  网络不稳定或服务器问题，自动重连会处理。
 
 - **模型调用返回错误**  
   通常为服务端临时故障或 API 密钥无效，可稍后重试或检查密钥。请确保使用正确的端点（特别是中转服务）。
@@ -163,6 +163,6 @@ Claude 调用次数: 2
 - **gemini**
   使用的是openai协议，后面会用回gemini协议
 
-![这是一张图片](https://img.fastmirror.net/s/2026/02/25/699ef01cd79a1.jpg)
+![这是一张图片](https://picui.ogmua.cn/s1/2026/02/26/699fb1657ad25.webp)
 
 欢迎提交 Issue 或 Pull Request 改进本项目！# Minecraft Chat Bot
