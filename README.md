@@ -44,10 +44,9 @@
 | `MC_HOST` | 服务器地址 | `localhost` |
 | `MC_PORT` | 服务器端口 | `25565` |
 | `MC_USERNAME` | 机器人用户名 | `DeepBot` |
-| `MC_PASSWORD` | 密码（在线模式需要） | 无 |
-| `MC_ONLINE` | 是否正版验证 | `false` |
 | `MC_INITIAL_ACTION` | 登录后立即执行的聊天内容 | 空 |
 | `MC_ADMIN` | 管理员游戏名（可执行命令） | `` |
+| `BOT_ADMIN` | 机器人管理员（可用ban） | `` |
 
 ### AI 模型配置
 每个模型均支持以下变量（以 `DEEPSEEK_` 为例）：
@@ -117,6 +116,7 @@ python main.py
 目前有以下模型名：deepseek、gemini、chatgpt、grok、claude
 例如：#deepseek 末影人为什么怕水？
 冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦
+······
 ```
 
 ### 管理员特殊行为

@@ -546,7 +546,7 @@ async function processMessage(m) {
 
   // 帮助命令（支持公开和私聊）
   if (trimmed === '#bot help') {
-    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦';
+    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========管理员命令=========\n（仅管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表';
     await sendChunks(helpText, m.username, m.whisper);
     return;
   }
