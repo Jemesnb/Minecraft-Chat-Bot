@@ -5,6 +5,8 @@
   "main": "bot.js",
   "license": "MIT",
   "dependencies": {
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
     "minecraft-data": "^3.105.0",
     "mineflayer": "latest",
     "mineflayer-pathfinder": "^2.4.5",
