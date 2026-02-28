@@ -169,6 +169,11 @@ function createBotInstance() {
       try { bot.chat(INITIAL_ACTION) } catch (e) { console.warn('INITIAL_ACTION failed:', e) }
     }
     reconnectAttempts = 0
+    if (bot._client && bot._client.socket && bot._client.socket.localPort) {
+      console.log(`本地端口: ${bot._client.socket.localPort}`);
+    } else {
+      console.warn('无法获取本地端口');
+}
   })
 
   // 公共聊天事件
