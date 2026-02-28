@@ -7,6 +7,44 @@ const app = express();
 // 从环境变量读取端口，默认 3000（可通过 .env 中的 WEB_PORT 覆盖）
 const PORT = process.env.WEB_PORT || 3000;
 
+// ==================== 认证配置 ====================
+const WEB_USERNAME = process.env.WEB_USERNAME;
+const WEB_PASSWORD = process.env.WEB_PASSWORD;
+
+// 判断是否需要认证（两者都存在且非空）
+const needAuth = WEB_USERNAME && WEB_PASSWORD && WEB_USERNAME.trim() !== '' && WEB_PASSWORD.trim() !== '';
+
+// 自定义 Basic Auth 中间件
+function basicAuth(req, res, next) {
+    if (!needAuth) {
+        // 无需认证，直接放行
+        return next();
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+        // 未提供认证头，要求客户端认证
+        res.set('WWW-Authenticate', 'Basic realm="MC Bot Configuration"');
+        return res.status(401).send('Authentication required.');
+    }
+
+    // 解码 Base64 凭证
+    const base64Credentials = authHeader.split(' ')[1];
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+    const [username, password] = credentials.split(':');
+
+    // 比对用户名和密码（trim 后比较，避免空格问题）
+    if (username.trim() === WEB_USERNAME.trim() && password.trim() === WEB_PASSWORD.trim()) {
+        return next();
+    } else {
+        res.set('WWW-Authenticate', 'Basic realm="MC Bot Configuration"');
+        return res.status(401).send('Invalid credentials.');
+    }
+}
+
+// 应用认证中间件（在所有路由之前）
+app.use(basicAuth);
+
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public'))); // 可选静态文件目录
 
@@ -42,7 +80,7 @@ const friendlyNames = {
     CLAUDE_PATH: 'Claude 路径',
     CLAUDE_MODEL: 'Claude 模型',
     // 管理员
-    ADMIN_NAME: '游戏管理员名称（可执行命令）',
+    ADMIN_NAME: '游戏管理员名称（可让bot执行命令）',
     BOT_ADMIN: '机器人管理员名称（可封禁玩家）',
     // Web 端口
     WEB_PORT: 'Web 管理端口',
