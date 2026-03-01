@@ -169,7 +169,7 @@ Claude 调用次数: 2
 - **gemini**
   使用的是openai协议，后面会用回gemini协议
 
-**.env.example是配置文件!**
+**.env.example是示例配置文件！！！你需要复制 `.env.example` 文件，并移除后面的`.example`放在项目根目录**
 
 ![这是一张图片](https://picui.ogmua.cn/s1/2026/02/26/699fb1657ad25.webp)
 
