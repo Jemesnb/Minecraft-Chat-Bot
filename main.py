@@ -6,6 +6,10 @@ import shutil
 import signal
 import time
 
+# 全局进程对象，供信号处理函数使用
+proc_bot = None
+proc_web = None
+
 def load_dotenv(path='.env'):
     if not os.path.exists(path):
         return {}
@@ -20,7 +24,6 @@ def load_dotenv(path='.env'):
     return env
 
 def ensure_node_deps():
-    # 检查 node 是否可用
     if not shutil.which('node'):
         print('Error: node is not installed or not in PATH. Please install Node.js.')
         sys.exit(1)
@@ -49,16 +52,33 @@ def ensure_node_deps():
             print('Failed to install express. Please run `npm install express body-parser` manually.')
             sys.exit(1)
 
+def signal_handler(signum, frame):
+    print('\nReceived signal, waiting for bot and web to exit gracefully...')
+    global proc_bot, proc_web
+
+    # 等待最多 5 秒让子进程自行退出
+    for _ in range(5):
+        if proc_bot is not None and proc_bot.poll() is not None and \
+           proc_web is not None and proc_web.poll() is not None:
+            break
+        time.sleep(1)
+
+    # 如果还有未退出的，强制终止
+    if proc_bot is not None and proc_bot.poll() is None:
+        proc_bot.terminate()
+    if proc_web is not None and proc_web.poll() is None:
+        proc_web.terminate()
+
+    sys.exit(0)
+
 def main():
-    # 如果存在则加载 .env
+    # 加载 .env
     env = load_dotenv('.env')
-    # 合并到子进程的环境变量
     child_env = os.environ.copy()
     child_env.update(env)
 
     ensure_node_deps()
 
-    # 脚本所在目录
     base_dir = os.path.dirname(__file__)
     bot_script = os.path.join(base_dir, 'bot.js')
     web_script = os.path.join(base_dir, 'web.js')
@@ -72,22 +92,12 @@ def main():
 
     print('Starting Node.js bot (bot.js) and web interface (web.js)...')
 
-    # 启动两个子进程
+    global proc_bot, proc_web
     proc_bot = subprocess.Popen(['node', bot_script], env=child_env)
     proc_web = subprocess.Popen(['node', web_script], env=child_env)
 
-    # 定义信号处理函数，用于终止子进程
-    def terminate_processes(signum, frame):
-        print('\nReceived signal, terminating bot and web...')
-        proc_bot.terminate()
-        proc_web.terminate()
-        # 等待进程结束
-        proc_bot.wait()
-        proc_web.wait()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, terminate_processes)
-    signal.signal(signal.SIGTERM, terminate_processes)
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
     # 等待任一进程结束
     while True:
