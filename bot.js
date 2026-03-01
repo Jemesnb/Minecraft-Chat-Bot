@@ -55,7 +55,7 @@ const onlineMode = (process.env.MC_ONLINE || 'false').toLowerCase() === 'true'
 const INITIAL_ACTION = process.env.MC_INITIAL_ACTION || ''
 
 // 游戏内管理员名称（可执行游戏命令）
-const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env.ADMIN_NAME : 'dengjiewei'
+const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env.ADMIN_NAME : ''
 
 // 机器人管理员名称（可执行封禁命令），默认为空表示无机器人管理员
 const BOT_ADMIN = process.env.BOT_ADMIN || ''
