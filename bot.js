@@ -141,6 +141,37 @@ function saveBanList() {
   }
 }
 
+// ==================== CDK 持久化 ====================
+const CDK_FILE = path.join(__dirname, 'cdk.json')
+let cdkMap = new Map() // CDK码 -> 命令模板
+
+// 加载 CDK
+function loadCdk() {
+  try {
+    if (fs.existsSync(CDK_FILE)) {
+      const data = fs.readFileSync(CDK_FILE, 'utf8')
+      const obj = JSON.parse(data)
+      cdkMap = new Map(Object.entries(obj))
+      console.log(`已加载 CDK，共 ${cdkMap.size} 个`)
+    } else {
+      console.log('CDK 文件不存在，将创建新文件')
+    }
+  } catch (err) {
+    console.error('加载 CDK 失败:', err)
+  }
+}
+
+// 保存 CDK
+function saveCdk() {
+  try {
+    const obj = Object.fromEntries(cdkMap)
+    fs.writeFileSync(CDK_FILE, JSON.stringify(obj, null, 2), 'utf8')
+    console.log('CDK 已保存')
+  } catch (err) {
+    console.error('保存 CDK 失败:', err)
+  }
+}
+
 // ==================== 自动重连相关 ====================
 let bot = null
 let reconnectAttempts = 0
@@ -173,7 +204,7 @@ function createBotInstance() {
       console.log(`本地端口: ${bot._client.socket.localPort}`);
     } else {
       console.warn('无法获取本地端口');
-}
+    }
   })
 
   // 公共聊天事件
@@ -543,15 +574,71 @@ async function processMessage(m) {
     }
   }
 
+  // ========== CDK 命令 ==========
+  // #addCDK - 仅游戏管理员可用
+  if (ADMIN_NAME && m.username === ADMIN_NAME && trimmed.startsWith('#addCDK ')) {
+    const commandTemplate = trimmed.slice(8).trim() // 去掉 "#addCDK "
+    if (!commandTemplate) {
+      const reply = '用法: #addCDK <要执行的命令>，可用 {} 代表兑换者名字，多条命令用 & 连接'
+      if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+      return
+    }
+    // 生成唯一 CDK 码（6位大写字母数字）
+    let code
+    do {
+      code = Math.random().toString(36).substring(2, 8).toUpperCase()
+    } while (cdkMap.has(code))
+    cdkMap.set(code, commandTemplate)
+    saveCdk()
+    const reply = `CDK 已生成: ${code}，关联命令: ${commandTemplate}`
+    if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+    return
+  }
+
+  // #useCDK - 所有玩家可用
+  if (trimmed.startsWith('#useCDK ')) {
+    const code = trimmed.slice(8).trim() // 去掉 "#useCDK "
+    if (!code) {
+      const reply = '用法: #useCDK <CDK码>'
+      if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+      return
+    }
+    const commandTemplate = cdkMap.get(code)
+    if (!commandTemplate) {
+      const reply = '无效的 CDK 码或已使用'
+      if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+      return
+    }
+    // 替换 {} 为当前玩家名
+    const playerName = m.username
+    const commands = commandTemplate.split('&').map(cmd => cmd.trim()).filter(cmd => cmd)
+    for (const cmd of commands) {
+      const finalCmd = cmd.replace(/\{\}/g, playerName) // 替换所有 {}
+      try {
+        console.log('执行 CDK 命令:', finalCmd)
+        bot.chat(finalCmd)
+      } catch (e) {
+        console.warn('执行 CDK 命令失败', finalCmd, e)
+      }
+      await new Promise(r => setTimeout(r, 600)) // 命令间隔
+    }
+    // 删除已使用的 CDK
+    cdkMap.delete(code)
+    saveCdk()
+    const reply = 'CDK 使用成功！'
+    if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+    return
+  }
+
   // ========== 黑名单检查 ==========
   if (bannedPlayers.has(lowerSender)) {
-    // 被封禁的玩家不触发任何 AI 功能（可改为回复提示，此处选择静默忽略）
+    // 被封禁的玩家不触发任何 AI 功能
     return
   }
 
   // 帮助命令（支持公开和私聊）
   if (trimmed === '#bot help') {
-    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========管理员命令=========\n（仅bot管理员可用，不是游戏管理员）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表';
+    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表';
     await sendChunks(helpText, m.username, m.whisper);
     return;
   }
@@ -671,4 +758,5 @@ process.on('exit', printTokenUsageAndExit)
 
 // ==================== 启动机器人 ====================
 loadBanList()  // 加载黑名单
+loadCdk()      // 加载 CDK
 createBotInstance()
