@@ -58,8 +58,8 @@ def signal_handler(signum, frame):
 
     # 等待最多 5 秒让子进程自行退出
     for _ in range(5):
-        if proc_bot is not None and proc_bot.poll() is not None and \
-           proc_web is not None and proc_web.poll() is not None:
+        if (proc_bot is None or proc_bot.poll() is not None) and \
+           (proc_web is None or proc_web.poll() is not None):
             break
         time.sleep(1)
 
@@ -99,22 +99,33 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # 等待任一进程结束
+    # 监控进程状态，但不再因单个进程退出而终止另一个
     while True:
-        bot_ret = proc_bot.poll()
-        web_ret = proc_web.poll()
-        if bot_ret is not None or web_ret is not None:
-            print('One of the processes exited, terminating the other...')
-            if bot_ret is None:
-                proc_bot.terminate()
-            if web_ret is None:
-                proc_web.terminate()
+        bot_ret = proc_bot.poll() if proc_bot else None
+        web_ret = proc_web.poll() if proc_web else None
+
+        # 如果两个进程都已退出（或已被置为 None），结束循环
+        if (proc_bot is None or bot_ret is not None) and (proc_web is None or web_ret is not None):
             break
+
+        # 如果 bot 进程退出，记录日志并释放引用（不终止 web）
+        if proc_bot and bot_ret is not None:
+            print(f'Bot process exited with code {bot_ret}, but web continues.')
+            proc_bot = None
+
+        # 如果 web 进程退出，记录日志并释放引用（不终止 bot）
+        if proc_web and web_ret is not None:
+            print(f'Web process exited with code {web_ret}, but bot continues.')
+            proc_web = None
+
         time.sleep(0.5)
 
-    # 等待两个进程完全退出
-    proc_bot.wait()
-    proc_web.wait()
+    # 等待两个进程完全退出（如果它们还存在）
+    if proc_bot and proc_bot.poll() is None:
+        proc_bot.wait()
+    if proc_web and proc_web.poll() is None:
+        proc_web.wait()
+
     print('Bot and web interface stopped.')
 
 if __name__ == '__main__':
