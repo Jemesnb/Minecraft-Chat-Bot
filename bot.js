@@ -62,6 +62,10 @@ const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env
 // 机器人管理员名称（可执行封禁命令），默认为空表示无机器人管理员
 const BOT_ADMIN = process.env.BOT_ADMIN || ''
 
+// -------------------- 统一的 AI 提示词（普通用户 & 管理员）--------------------
+const PROMPT_NORMAL = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
+
+const PROMPT_ADMIN = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
 
 // -------------------- Deepseek 配置（默认官方）--------------------
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || ''
@@ -311,9 +315,8 @@ async function callDeepseek(query, sender) {
   const path = DEEPSEEK_PATH.startsWith('/') ? DEEPSEEK_PATH : '/' + DEEPSEEK_PATH
   const url = base + path
 
-  const defaultSystem = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
-  const adminSystem = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
-  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? adminSystem : defaultSystem
+  // 使用统一的提示词变量，根据发送者选择
+  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
   const body = {
     model: DEEPSEEK_MODEL,
@@ -346,9 +349,7 @@ async function callGemini(query, sender) {
   const path = GEMINI_PATH.startsWith('/') ? GEMINI_PATH : '/' + GEMINI_PATH
   const url = base + path
 
-  const defaultSystem = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
-  const adminSystem = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
-  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? adminSystem : defaultSystem
+  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
   const body = {
     model: GEMINI_MODEL,
@@ -381,9 +382,7 @@ async function callGPT(query, sender) {
   const path = GPT_PATH.startsWith('/') ? GPT_PATH : '/' + GPT_PATH
   const url = base + path
 
-  const defaultSystem = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
-  const adminSystem = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
-  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? adminSystem : defaultSystem
+  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
   const body = {
     model: GPT_MODEL,
@@ -416,9 +415,7 @@ async function callGrok(query, sender) {
   const path = GROK_PATH.startsWith('/') ? GROK_PATH : '/' + GROK_PATH
   const url = base + path
 
-  const defaultSystem = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
-  const adminSystem = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
-  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? adminSystem : defaultSystem
+  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
   const body = {
     model: GROK_MODEL,
@@ -451,9 +448,7 @@ async function callClaude(query, sender) {
   const path = CLAUDE_PATH.startsWith('/') ? CLAUDE_PATH : '/' + CLAUDE_PATH
   const url = base + path
 
-  const defaultSystem = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
-  const adminSystem = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
-  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? adminSystem : defaultSystem
+  const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
   const body = {
     model: CLAUDE_MODEL,
