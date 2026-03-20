@@ -62,9 +62,11 @@ const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env
 // 机器人管理员名称（可执行封禁命令），默认为空表示无机器人管理员
 const BOT_ADMIN = process.env.BOT_ADMIN || ''
 
-// -------------------- 统一的 AI 提示词（普通用户 & 管理员）--------------------
-const PROMPT_NORMAL = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
+// 桥接服务地址（如果启用）
+const BRIDGE_URL = process.env.BRIDGE_URL || ''
 
+// -------------------- AI 提示词--------------------
+const PROMPT_NORMAL = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
 const PROMPT_ADMIN = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
 
 // -------------------- Deepseek 配置（默认官方）--------------------
@@ -90,19 +92,19 @@ const GPT_PREFIX = process.env.CHATGPT_PREFIX || '#chatgpt '
 
 // -------------------- Grok 配置（OpenAI 协议）--------------------
 const GROK_API_KEY = process.env.GROK_API_KEY || ''
-const GROK_ENDPOINT = process.env.GROK_ENDPOINT || 'https://api.x.ai'        // 默认端点，可自定义
+const GROK_ENDPOINT = process.env.GROK_ENDPOINT || 'https://api.x.ai'
 const GROK_PATH = process.env.GROK_PATH || '/v1/chat/completions'
-const GROK_MODEL = process.env.GROK_MODEL || 'grok-1'                         // 默认模型名
+const GROK_MODEL = process.env.GROK_MODEL || 'grok-1'
 const GROK_PREFIX = process.env.GROK_PREFIX || '#grok '
 
 // -------------------- Claude 配置（OpenAI 协议）--------------------
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || ''
-const CLAUDE_ENDPOINT = process.env.CLAUDE_ENDPOINT || 'https://api.anthropic.com'   // 默认端点
-const CLAUDE_PATH = process.env.CLAUDE_PATH || '/v1/chat/completions'                 // OpenAI 兼容路径
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-opus-latest'               // 默认模型
+const CLAUDE_ENDPOINT = process.env.CLAUDE_ENDPOINT || 'https://api.anthropic.com'
+const CLAUDE_PATH = process.env.CLAUDE_PATH || '/v1/chat/completions'
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-opus-latest'
 const CLAUDE_PREFIX = process.env.CLAUDE_PREFIX || '#claude '
 
-// -------------------- 防刷屏分段配置 --------------------
+// -------------------- 防刷屏配置 --------------------
 let CHAT_CHUNK_SIZE = parseInt(process.env.CHAT_CHUNK_SIZE || '150', 10)
 if (isNaN(CHAT_CHUNK_SIZE) || CHAT_CHUNK_SIZE < 1) CHAT_CHUNK_SIZE = 150
 let CHAT_DELAY_MS = parseInt(process.env.CHAT_DELAY_MS || '600', 10)
@@ -204,26 +206,44 @@ function startApiServer() {
       req.on('data', chunk => body += chunk)
       req.on('end', () => {
         try {
-          const { command, type } = JSON.parse(body)
+          const { command, type, target } = JSON.parse(body)
           if (!command) {
             res.writeHead(400)
             return res.end(JSON.stringify({ error: 'Missing command' }))
           }
 
-          let fullCommand = command
-          if (type === 'cmd' && !fullCommand.startsWith('/')) {
-            fullCommand = '/' + fullCommand
+          if (type === 'cmd') {
+            let fullCommand = command
+            if (!fullCommand.startsWith('/')) fullCommand = '/' + fullCommand
+            if (bot && bot.entity) {
+              bot.chat(fullCommand)
+              console.log(`[Web远程] 执行命令: ${fullCommand}`)
+            } else {
+              res.writeHead(503)
+              return res.end(JSON.stringify({ error: 'Bot not connected' }))
+            }
+          } else if (type === 'whisper' && target) {
+            // 私聊发送
+            if (bot && bot.entity) {
+              bot.whisper(target, command)
+              console.log(`[Web远程] 私聊 ${target}: ${command}`)
+            } else {
+              res.writeHead(503)
+              return res.end(JSON.stringify({ error: 'Bot not connected' }))
+            }
+          } else {
+            // 默认公开聊天
+            if (bot && bot.entity) {
+              bot.chat(command)
+              console.log(`[Web远程] 发言: ${command}`)
+            } else {
+              res.writeHead(503)
+              return res.end(JSON.stringify({ error: 'Bot not connected' }))
+            }
           }
 
-          if (bot && bot.entity) {
-            bot.chat(fullCommand)
-            console.log(`[Web远程] 执行: ${fullCommand}`)
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ success: true, message: '命令已发送' }))
-          } else {
-            res.writeHead(503)
-            res.end(JSON.stringify({ error: 'Bot not connected' }))
-          }
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ success: true, message: '命令已发送' }))
         } catch (err) {
           res.writeHead(400)
           res.end(JSON.stringify({ error: 'Invalid JSON' }))
@@ -247,6 +267,41 @@ function startApiServer() {
   })
 
   return server
+}
+
+// ==================== 桥接推送辅助函数 ====================
+// 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令）
+function shouldPushToBridge(message) {
+  console.log(`[Bot] shouldPushToBridge 检查: ${message}`);
+  if (!message) return false
+  const trimmed = message.trim()
+  if (!trimmed) return false
+  // 排除帮助命令
+  if (trimmed === '#bot help') return false
+  // 排除所有 AI 模型前缀
+  const prefixes = [DEEPSEEK_PREFIX, GEMINI_PREFIX, GPT_PREFIX, GROK_PREFIX, CLAUDE_PREFIX]
+  for (const prefix of prefixes) {
+    if (prefix && message.startsWith(prefix)) return false
+  }
+  return true
+}
+
+// 异步推送消息到桥接服务
+function pushToBridge(username, message, isWhisper = false) {
+  console.log(`[Bot] 尝试推送: ${username} -> ${message}`);
+  if (!BRIDGE_URL) return
+  // 只推送公开聊天（私聊不推送）
+  if (isWhisper) return
+  fetch(BRIDGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      username,
+      message,
+      isWhisper,
+      time: Date.now()
+    })
+  }).catch(e => console.warn('[Bot] 推送消息到桥接服务失败:', e.message))
 }
 
 // ==================== 创建机器人实例 ====================
@@ -278,11 +333,16 @@ function createBotInstance() {
   // 公共聊天事件
   bot.on('chat', (username_, message) => {
     chatBuffer.push({ username: username_, message, time: Date.now(), whisper: false })
+    // 推送：只推送不是机器人自己发送的、且不是 AI 前缀/帮助命令的消息
+    if (username_ !== bot.username && shouldPushToBridge(message)) {
+      pushToBridge(username_, message, false)
+    }
   })
 
-  // 私聊事件 (whisper)
+  // 私聊事件（不推送）
   bot.on('whisper', (username_, message) => {
     chatBuffer.push({ username: username_, message, time: Date.now(), whisper: true })
+    // 私聊不推送（符合用户要求）
   })
 
   bot.on('message', (msg) => {
@@ -785,7 +845,7 @@ async function processMessage(m) {
   }
 }
 
-// ==================== 定时器：处理消息缓存（并发）====================
+// ==================== 定时器（处理消息缓存） ====================
 setInterval(() => {
   if (chatBuffer.length === 0) return
   const messages = chatBuffer.splice(0, chatBuffer.length)
@@ -824,4 +884,4 @@ process.on('exit', printTokenUsageAndExit)
 loadBanList()
 loadCdk()
 createBotInstance()
-apiServer = startApiServer()  // 启动内部 API 服务器
+apiServer = startApiServer()
