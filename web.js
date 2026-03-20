@@ -16,11 +16,7 @@ const needAuth = WEB_USERNAME && WEB_PASSWORD && WEB_USERNAME.trim() !== '' && W
 
 // 自定义 Basic Auth 中间件
 function basicAuth(req, res, next) {
-    if (!needAuth) {
-        // 无需认证，直接放行
-        return next();
-    }
-
+    if (!needAuth) return next();
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Basic ')) {
         // 未提供认证头，要求客户端认证
@@ -46,16 +42,15 @@ function basicAuth(req, res, next) {
 app.use(basicAuth);
 
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public'))); // 可选静态文件目录
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ==================== 中文友好名称映射 ====================
+// ==================== 友好名称映射 ====================
 const friendlyNames = {
     // Minecraft 服务器连接
     MC_HOST: '服务器地址',
     MC_PORT: '服务器端口',
     MC_USERNAME: '机器人用户名',
-    MC_INITIAL_ACTION: '初始动作（登录后自动发送）',
-    // Deepseek API
+    MC_INITIAL_ACTION: '初始动作',
     DEEPSEEK_API_KEY: 'Deepseek API 密钥',
     DEEPSEEK_ENDPOINT: 'Deepseek 端点',
     DEEPSEEK_PATH: 'Deepseek 路径',
@@ -79,22 +74,22 @@ const friendlyNames = {
     CLAUDE_ENDPOINT: 'Claude 端点',
     CLAUDE_PATH: 'Claude 路径',
     CLAUDE_MODEL: 'Claude 模型',
-    // 管理员
-    ADMIN_NAME: '游戏管理员名称（可让bot执行命令）',
-    BOT_ADMIN: '机器人管理员名称（可封禁玩家）',
-    // Web 端口
-    WEB_PORT: 'Web 管理端口',
-    // 防刷屏
-    CHAT_DELAY_MS: '聊天发送延迟（毫秒）',
+    ADMIN_NAME: '游戏管理员',
+    BOT_ADMIN: '机器人管理员',
+    WEB_PORT: 'Web 端口',
+    WEB_USERNAME: 'Web 用户名',
+    WEB_PASSWORD: 'Web 密码',
+    CHAT_DELAY_MS: '聊天延迟(ms)',
 };
 
-// ==================== 文件操作函数 ====================
+// ==================== 配置 API ====================
+const ENV_FILE = path.join(__dirname, '.env');
 
-// 解析 .env 文件为对象
-function parseEnvFile(filePath) {
+// 解析 .env 文件
+function parseEnvFile() {
     const env = {};
     try {
-        const content = fs.readFileSync(filePath, 'utf8');
+        const content = fs.readFileSync(ENV_FILE, 'utf8');
         content.split('\n').forEach(line => {
             const match = line.match(/^\s*([^#=]+)\s*=\s*(.*?)\s*$/);
             if (match) {
@@ -107,80 +102,31 @@ function parseEnvFile(filePath) {
             }
         });
     } catch (err) {
-        // 文件不存在，返回空对象
+        // 文件不存在返回空
     }
     return env;
 }
 
-// 解析 .env.example 获取所有变量名及其默认值
-function parseExampleFile(filePath) {
-    const items = []; // { key, defaultValue }
-    try {
-        const content = fs.readFileSync(filePath, 'utf8');
-        content.split('\n').forEach(line => {
-            const match = line.match(/^\s*([^#=]+)\s*=\s*(.*?)\s*$/);
-            if (match) {
-                const key = match[1].trim();
-                const defaultValue = match[2].trim();
-                items.push({ key, defaultValue });
-            }
-        });
-    } catch (err) {
-        console.error('读取 .env.example 失败:', err);
-    }
-    return items;
-}
-
-// 写入 .env 文件（基于 .env.example 中的变量顺序）
-function writeEnvFile(exampleItems, newValues) {
+// 写入 .env 文件
+function writeEnvFile(newValues) {
     const lines = [];
-    // 先从 .env.example 读取原始内容以保留注释和格式
-    try {
-        const exampleContent = fs.readFileSync(path.join(__dirname, '.env.example'), 'utf8');
-        const exampleLines = exampleContent.split('\n');
-        for (const line of exampleLines) {
-            const match = line.match(/^\s*([^#=]+)\s*=\s*(.*?)\s*$/);
-            if (match) {
-                const key = match[1].trim();
-                const value = newValues[key] !== undefined ? newValues[key] : match[2].trim();
-                // 如果值包含空格或特殊字符，用双引号包裹
-                const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=');
-                const formattedValue = needsQuotes ? `"${value}"` : value;
-                lines.push(`${key}=${formattedValue}`);
-            } else {
-                // 注释或空行，原样保留
-                lines.push(line);
-            }
-        }
-    } catch (err) {
-        // 如果 .env.example 不存在，则直接根据 exampleItems 生成简单文件
-        console.error('无法读取 .env.example，将基于变量列表生成 .env');
-        for (const item of exampleItems) {
-            const key = item.key;
-            const value = newValues[key] !== undefined ? newValues[key] : item.defaultValue;
-            const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=');
-            const formattedValue = needsQuotes ? `"${value}"` : value;
-            lines.push(`${key}=${formattedValue}`);
-        }
+    for (const [key, value] of Object.entries(newValues)) {
+        const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=');
+        const formattedValue = needsQuotes ? `"${value}"` : value;
+        lines.push(`${key}=${formattedValue}`);
     }
-    fs.writeFileSync(path.join(__dirname, '.env'), lines.join('\n'), 'utf8');
+    fs.writeFileSync(ENV_FILE, lines.join('\n'), 'utf8');
 }
 
 // ==================== API 路由 ====================
 
 // 获取配置
 app.get('/api/config', (req, res) => {
-    const envPath = path.join(__dirname, '.env');
-    const examplePath = path.join(__dirname, '.env.example');
-
-    const currentEnv = parseEnvFile(envPath);
-    const exampleItems = parseExampleFile(examplePath);
-
-    // 构建返回数据：每个配置项包含 key, value, friendlyName
-    const configs = exampleItems.map(item => ({
-        key: item.key,
-        value: currentEnv[item.key] !== undefined ? currentEnv[item.key] : item.defaultValue,
-        friendlyName: friendlyNames[item.key] || item.key, // 若无映射则显示变量名本身
+    const env = parseEnvFile();
+    const configs = Object.keys(env).map(key => ({
+        key,
+        value: env[key],
+        friendlyName: friendlyNames[key] || key,
     }));
 
     res.json({ configs });
@@ -189,17 +135,92 @@ app.get('/api/config', (req, res) => {
 // 保存配置
 app.post('/api/config', (req, res) => {
     const newValues = req.body;
-    const examplePath = path.join(__dirname, '.env.example');
-    const exampleItems = parseExampleFile(examplePath);
     try {
-        writeEnvFile(exampleItems, newValues);
+        writeEnvFile(newValues);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// 提供前端页面
+// ==================== 日志相关 API ====================
+const LOG_DIR = path.join(__dirname, 'logs');
+
+app.get('/api/logs', (req, res) => {
+    fs.readdir(LOG_DIR, (err, files) => {
+        if (err) return res.status(500).json({ error: '无法读取日志目录' });
+        const logFiles = files
+            .filter(f => f.endsWith('.log'))
+            .map(f => ({ name: f, size: fs.statSync(path.join(LOG_DIR, f)).size }))
+            .sort((a, b) => b.name.localeCompare(a.name));
+        res.json(logFiles);
+    });
+});
+
+app.get('/api/logs/:filename', (req, res) => {
+    const filename = req.params.filename;
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return res.status(400).json({ error: '非法文件名' });
+    }
+    const filePath = path.join(LOG_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在' });
+
+    const page = parseInt(req.query.page) || 1;
+    const size = parseInt(req.query.size) || 100;
+    fs.readFile(filePath, 'utf8', (err, data) => {
+        if (err) return res.status(500).json({ error: '读取文件失败' });
+        const lines = data.split('\n').filter(line => line.trim() !== '');
+        const totalLines = lines.length;
+        const start = (page - 1) * size;
+        const end = start + size;
+        const pageLines = lines.slice(start, end);
+        res.json({ filename, totalLines, page, size, lines: pageLines });
+    });
+});
+
+app.post('/api/logs/:filename/clear', (req, res) => {
+    const filename = req.params.filename;
+    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+        return res.status(400).json({ error: '非法文件名' });
+    }
+    const filePath = path.join(LOG_DIR, filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: '文件不存在' });
+    fs.writeFile(filePath, '', 'utf8', (err) => {
+        if (err) return res.status(500).json({ error: '清空失败' });
+        res.json({ success: true });
+    });
+});
+
+// ==================== 远程命令执行 ====================
+app.post('/api/execute', async (req, res) => {
+    const portFile = path.join(__dirname, '.bot_port');
+    let botApiPort = null;
+    if (fs.existsSync(portFile)) {
+        try {
+            botApiPort = parseInt(fs.readFileSync(portFile, 'utf8').trim(), 10);
+        } catch (e) {}
+    }
+    if (!botApiPort) {
+        return res.status(503).json({ error: 'Bot 内部 API 未就绪' });
+    }
+
+    const { command, type } = req.body;
+    if (!command) return res.status(400).json({ error: '缺少命令' });
+
+    try {
+        const response = await fetch(`http://127.0.0.1:${botApiPort}/api/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command, type })
+        });
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        res.status(500).json({ error: '无法连接到 Bot 内部 API' });
+    }
+});
+
+// ==================== 前端页面 ====================
 app.get('/', (req, res) => {
     res.send(`
 <!DOCTYPE html>
@@ -283,6 +304,211 @@ app.get('/', (req, res) => {
     `);
 });
 
+app.get('/logs', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>日志查看 - MC Bot</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { text-align: center; }
+        .file-list { margin-bottom: 20px; }
+        .file-list select { width: 300px; padding: 5px; }
+        .log-content { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; font-family: monospace; height: 500px; overflow-y: auto; white-space: pre-wrap; }
+        .controls { margin: 10px 0; }
+        button { padding: 5px 10px; margin-right: 5px; }
+        .pagination { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 日志查看器</h1>
+        <div class="file-list">
+            <label>选择日志文件：</label>
+            <select id="fileSelect" onchange="loadLogFile()"></select>
+            <button onclick="refreshFileList()">刷新列表</button>
+            <button onclick="clearCurrentLog()" style="background:#ff4444;color:white;">清空当前日志</button>
+        </div>
+        <div class="controls">
+            <button onclick="prevPage()">上一页</button>
+            <span id="pageInfo">第 1 页</span>
+            <button onclick="nextPage()">下一页</button>
+            <input type="number" id="pageSize" value="100" min="1" style="width:60px;"> 行/页
+            <button onclick="loadLogFile()">跳转</button>
+            <button onclick="downloadLog()">下载日志</button>
+        </div>
+        <div class="log-content" id="logContent">请选择日志文件</div>
+    </div>
+
+    <script>
+        let currentFile = '';
+        let currentPage = 1;
+        let pageSize = 100;
+        let totalLines = 0;
+
+        async function refreshFileList() {
+            const res = await fetch('/api/logs');
+            const files = await res.json();
+            const select = document.getElementById('fileSelect');
+            select.innerHTML = files.map(f => \`<option value="\${f.name}">\${f.name} (\${(f.size/1024).toFixed(2)} KB)</option>\`).join('');
+            if (files.length > 0) {
+                currentFile = files[0].name;
+                loadLogFile();
+            }
+        }
+
+        async function loadLogFile() {
+            const select = document.getElementById('fileSelect');
+            currentFile = select.value || currentFile;
+            if (!currentFile) return;
+
+            pageSize = parseInt(document.getElementById('pageSize').value) || 100;
+            const url = \`/api/logs/\${encodeURIComponent(currentFile)}?page=\${currentPage}&size=\${pageSize}\`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (res.ok) {
+                totalLines = data.totalLines;
+                document.getElementById('logContent').innerText = data.lines.join('\\n') || '（空）';
+                document.getElementById('pageInfo').innerText = \`第 \${data.page} 页 / 共 \${Math.ceil(totalLines/pageSize)} 页 (\${totalLines} 行)\`;
+            } else {
+                alert('加载失败：' + data.error);
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadLogFile();
+            }
+        }
+
+        function nextPage() {
+            currentPage++;
+            loadLogFile();
+        }
+
+        async function clearCurrentLog() {
+            if (!currentFile || !confirm('确定要清空该日志文件吗？')) return;
+            const res = await fetch(\`/api/logs/\${encodeURIComponent(currentFile)}/clear\`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert('已清空');
+                loadLogFile();
+            } else {
+                alert('清空失败：' + data.error);
+            }
+        }
+
+        function downloadLog() {
+            if (!currentFile) return;
+            fetch(\`/api/logs/\${encodeURIComponent(currentFile)}\`).then(res => res.blob()).then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = currentFile;
+                a.click();
+            });
+        }
+
+        refreshFileList();
+        setInterval(refreshFileList, 10000);
+    </script>
+</body>
+</html>
+    `);
+});
+
+app.get('/control', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>远程控制 - MC Bot</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input[type=text] { width: 100%; padding: 8px; font-size: 16px; }
+        select { padding: 8px; font-size: 16px; }
+        button { padding: 10px 20px; font-size: 16px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .history { margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; }
+        .history-item { background: #f0f0f0; padding: 5px; margin-bottom: 5px; border-radius: 4px; font-family: monospace; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 远程控制机器人</h1>
+        <div class="form-group">
+            <label>命令类型</label>
+            <select id="cmdType">
+                <option value="chat">💬 发言（普通聊天）</option>
+                <option value="cmd">⚡ 执行命令（自动加 /）</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>命令内容</label>
+            <input type="text" id="cmdInput" placeholder="例如: /give @p diamond 1 或 大家好" autofocus>
+        </div>
+        <button onclick="sendCommand()">发送</button>
+        <div id="result" style="margin-top:10px;"></div>
+        <div class="history">
+            <h3>历史记录</h3>
+            <div id="historyList"></div>
+        </div>
+    </div>
+
+    <script>
+        let history = [];
+
+        async function sendCommand() {
+            const type = document.getElementById('cmdType').value;
+            const command = document.getElementById('cmdInput').value.trim();
+            if (!command) return;
+
+            const res = await fetch('/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command, type })
+            });
+            const result = await res.json();
+            const resultDiv = document.getElementById('result');
+            if (res.ok) {
+                resultDiv.innerHTML = '<span class="success">✅ 命令已发送</span>';
+                history.unshift({ type, command, time: new Date().toLocaleTimeString() });
+                if (history.length > 10) history.pop();
+                renderHistory();
+                document.getElementById('cmdInput').value = '';
+            } else {
+                resultDiv.innerHTML = '<span class="error">❌ ' + (result.error || '发送失败') + '</span>';
+            }
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            list.innerHTML = history.map(h => \`
+                <div class="history-item">[\${h.time}] [\${h.type === 'chat' ? '💬' : '⚡'}] \${h.command}</div>
+            \`).join('');
+        }
+
+        document.getElementById('cmdInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendCommand();
+        });
+    </script>
+</body>
+</html>
+    `);
+});
+// 启动 Web 服务器
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Web 配置界面运行在 http://0.0.0.0:${PORT}`);
+    console.log(`日志查看: http://0.0.0.0:${PORT}/logs`);
+    console.log(`远程控制: http://0.0.0.0:${PORT}/control`);
 });

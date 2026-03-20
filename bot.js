@@ -2,6 +2,8 @@ const mineflayer = require('mineflayer')
 const fetch = require('node-fetch')
 const fs = require('fs')
 const path = require('path')
+const http = require('http')
+const url = require('url')
 
 // ==================== 日志初始化 ====================
 const LOG_DIR = path.join(__dirname, 'logs')
@@ -24,7 +26,7 @@ function writeToLog(level, args) {
   const message = `[${timestamp}] [${level}] ${Array.from(args).map(arg => 
     typeof arg === 'string' ? arg : JSON.stringify(arg)
   ).join(' ')}\n`
-  
+
   fs.appendFileSync(logFile, message, { encoding: 'utf8' })
 }
 
@@ -59,6 +61,7 @@ const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env
 
 // 机器人管理员名称（可执行封禁命令），默认为空表示无机器人管理员
 const BOT_ADMIN = process.env.BOT_ADMIN || ''
+
 
 // -------------------- Deepseek 配置（默认官方）--------------------
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || ''
@@ -96,10 +99,9 @@ const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-3-opus-latest'         
 const CLAUDE_PREFIX = process.env.CLAUDE_PREFIX || '#claude '
 
 // -------------------- 防刷屏分段配置 --------------------
-let CHAT_CHUNK_SIZE = parseInt(process.env.CHAT_CHUNK_SIZE || '150', 10)  // 仅用于兼容旧变量名，实际未使用
+let CHAT_CHUNK_SIZE = parseInt(process.env.CHAT_CHUNK_SIZE || '150', 10)
 if (isNaN(CHAT_CHUNK_SIZE) || CHAT_CHUNK_SIZE < 1) CHAT_CHUNK_SIZE = 150
-
-let CHAT_DELAY_MS = parseInt(process.env.CHAT_DELAY_MS || '600', 10)      // 段间延迟（毫秒）
+let CHAT_DELAY_MS = parseInt(process.env.CHAT_DELAY_MS || '600', 10)
 if (isNaN(CHAT_DELAY_MS) || CHAT_DELAY_MS < 0) CHAT_DELAY_MS = 600
 
 // ==================== 全局统计变量 ====================
@@ -112,7 +114,7 @@ let CLAUDE_CALLS = 0
 
 // ==================== 黑名单持久化 ====================
 const BANLIST_FILE = path.join(__dirname, 'banned.json')
-let bannedPlayers = new Set()  // 存储小写玩家名
+let bannedPlayers = new Set()
 
 // 加载黑名单
 function loadBanList() {
@@ -143,7 +145,7 @@ function saveBanList() {
 
 // ==================== CDK 持久化 ====================
 const CDK_FILE = path.join(__dirname, 'cdk.json')
-let cdkMap = new Map() // CDK码 -> 命令模板
+let cdkMap = new Map()
 
 // 加载 CDK
 function loadCdk() {
@@ -181,6 +183,68 @@ const RECONNECT_DELAY = 5000
 // 消息缓存：每条消息包含用户名、内容、是否为私聊
 let chatBuffer = []
 
+// ==================== 内部 API 服务器 ====================
+let apiServer = null
+
+function startApiServer() {
+  const server = http.createServer((req, res) => {
+    const clientIp = req.socket.remoteAddress.replace(/^::ffff:/, '')
+    if (clientIp !== '127.0.0.1' && clientIp !== '::1') {
+      res.writeHead(403)
+      return res.end('Forbidden')
+    }
+
+    const parsedUrl = url.parse(req.url, true)
+    if (req.method === 'POST' && parsedUrl.pathname === '/api/execute') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          const { command, type } = JSON.parse(body)
+          if (!command) {
+            res.writeHead(400)
+            return res.end(JSON.stringify({ error: 'Missing command' }))
+          }
+
+          let fullCommand = command
+          if (type === 'cmd' && !fullCommand.startsWith('/')) {
+            fullCommand = '/' + fullCommand
+          }
+
+          if (bot && bot.entity) {
+            bot.chat(fullCommand)
+            console.log(`[Web远程] 执行: ${fullCommand}`)
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ success: true, message: '命令已发送' }))
+          } else {
+            res.writeHead(503)
+            res.end(JSON.stringify({ error: 'Bot not connected' }))
+          }
+        } catch (err) {
+          res.writeHead(400)
+          res.end(JSON.stringify({ error: 'Invalid JSON' }))
+        }
+      })
+    } else {
+      res.writeHead(404)
+      res.end('Not found')
+    }
+  })
+
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address()
+    const port = address.port
+    console.log(`内部 API 服务器运行在 http://127.0.0.1:${port}`)
+    fs.writeFileSync(path.join(__dirname, '.bot_port'), port.toString(), 'utf8')
+  })
+
+  server.on('error', (err) => {
+    console.error('内部 API 服务器错误:', err)
+  })
+
+  return server
+}
+
 // ==================== 创建机器人实例 ====================
 function createBotInstance() {
   if (bot) {
@@ -201,9 +265,9 @@ function createBotInstance() {
     }
     reconnectAttempts = 0
     if (bot._client && bot._client.socket && bot._client.socket.localPort) {
-      console.log(`本地端口: ${bot._client.socket.localPort}`);
+      console.log(`本地端口: ${bot._client.socket.localPort}`)
     } else {
-      console.warn('无法获取本地端口');
+      console.warn('无法获取本地端口')
     }
   })
 
@@ -639,7 +703,7 @@ async function processMessage(m) {
   // 帮助命令（支持公开和私聊）
   if (trimmed === '#bot help') {
     const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表';
-    await sendChunks(helpText, m.username, m.whisper);
+    await sendChunks(helpText, m.username, true); // 强制私聊
     return;
   }
 
@@ -741,6 +805,11 @@ setInterval(() => {
 
 // ==================== 退出时打印统计 ====================
 function printTokenUsageAndExit(code) {
+  if (apiServer) {
+    apiServer.close()
+    console.log('内部 API 服务器已关闭')
+  }
+
   console.log('\n========== Token 使用统计 ==========')
   console.log('Deepseek 调用次数:', DEEPSEEK_CALLS)
   console.log('Gemini 调用次数:', GEMINI_CALLS)
@@ -757,6 +826,7 @@ process.on('SIGTERM', () => { console.log('捕获 SIGTERM'); printTokenUsageAndE
 process.on('exit', printTokenUsageAndExit)
 
 // ==================== 启动机器人 ====================
-loadBanList()  // 加载黑名单
-loadCdk()      // 加载 CDK
+loadBanList()
+loadCdk()
 createBotInstance()
+apiServer = startApiServer()  // 启动内部 API 服务器
