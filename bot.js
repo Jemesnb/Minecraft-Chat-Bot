@@ -271,19 +271,37 @@ function startApiServer() {
 
 // ==================== 桥接推送辅助函数 ====================
 // 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令）
-function shouldPushToBridge(message) {
-  console.log(`[Bot] shouldPushToBridge 检查: ${message}`);
-  if (!message) return false
-  const trimmed = message.trim()
-  if (!trimmed) return false
+// 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令、管理员命令反馈）
+function shouldPushToBridge(message, sender) {
+  if (!message) return false;
+  const trimmed = message.trim();
+  if (!trimmed) return false;
+  
   // 排除帮助命令
-  if (trimmed === '#bot help') return false
+  if (trimmed === '#bot help') return false;
+  
   // 排除所有 AI 模型前缀
-  const prefixes = [DEEPSEEK_PREFIX, GEMINI_PREFIX, GPT_PREFIX, GROK_PREFIX, CLAUDE_PREFIX]
+  const prefixes = [DEEPSEEK_PREFIX, GEMINI_PREFIX, GPT_PREFIX, GROK_PREFIX, CLAUDE_PREFIX];
   for (const prefix of prefixes) {
-    if (prefix && message.startsWith(prefix)) return false
+    if (prefix && message.startsWith(prefix)) return false;
   }
-  return true
+  
+  // 如果是管理员，并且消息看起来像是命令反馈，则不转发
+  if (ADMIN_NAME && sender === ADMIN_NAME) {
+    // 常见命令反馈关键词
+    const feedbackKeywords = [
+      'Successfully', 'filled', 'cannot', 'not found', 'block(s)',
+      'You do not have permission', 'Removed', 'Killed', 'Teleported'
+    ];
+    for (const keyword of feedbackKeywords) {
+      if (trimmed.includes(keyword)) {
+        console.log(`[Bot] 跳过管理员命令反馈消息: ${trimmed}`);
+        return false;
+      }
+    }
+  }
+  
+  return true;
 }
 
 // 异步推送消息到桥接服务
@@ -332,11 +350,11 @@ function createBotInstance() {
 
   // 公共聊天事件
   bot.on('chat', (username_, message) => {
-    chatBuffer.push({ username: username_, message, time: Date.now(), whisper: false })
-    // 推送：只推送不是机器人自己发送的、且不是 AI 前缀/帮助命令的消息
-    if (username_ !== bot.username && shouldPushToBridge(message)) {
-      pushToBridge(username_, message, false)
-    }
+  chatBuffer.push({ username: username_, message, time: Date.now(), whisper: false })
+  // 推送：只推送不是机器人自己发送的、且不是 AI 前缀/帮助命令的消息
+  if (username_ !== bot.username && shouldPushToBridge(message, username_)) {
+    pushToBridge(username_, message, false)
+  }
   })
 
   // 私聊事件（不推送）
