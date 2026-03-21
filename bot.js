@@ -270,8 +270,7 @@ function startApiServer() {
 }
 
 // ==================== 桥接推送辅助函数 ====================
-// 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令）
-// 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令、管理员命令反馈）
+// 判断消息是否应推送到桥接服务（排除私聊、AI 指令、帮助命令、命令反馈）
 function shouldPushToBridge(message, sender) {
   if (!message) return false;
   const trimmed = message.trim();
@@ -286,23 +285,32 @@ function shouldPushToBridge(message, sender) {
     if (prefix && message.startsWith(prefix)) return false;
   }
   
-  // 如果是管理员，并且消息看起来像是命令反馈，则不转发
-  if (ADMIN_NAME && sender === ADMIN_NAME) {
-    // 常见命令反馈关键词
-    const feedbackKeywords = [
+  // 全局关键词过滤（不限制发送者）
+  const feedbackKeywords = [
       'Successfully', 'filled', 'cannot', 'not found', 'block(s)',
-      'You do not have permission', 'Removed', 'Killed', 'Teleported'
+      'You do not have permission', 'Removed', 'Killed', 'Teleported',
+      'Given', 'summoned', 'set to', 'xp', 'experience', 'advancement', 'enchantments', 'effects',
+      'banned', 'unbanned', 'pardon', 'deop', 'op', 'gamemode', 'difficulty',
+      'weather', 'time set', 'tp', 'teleport', 'spawnpoint', 'setblock', 'fill', 'clone',
+      'execute', 'data merge', 'scoreboard', 'team', 'tag', 'title', 'bossbar',
+      'particle', 'playsound', 'effect give', 'effect clear', 'enchant', 'xp', 'experience',
+      'advancement', 'enchantments', 'effects', 'banned', 'unbanned','game','Set the time', 
+      'Changed the difficulty', 'Set the weather', 'Gave', 'Summoned', 'Teleported',
+      'Successfully executed', 'Failed to execute', 'No targets matched', 'Invalid', 'Error',
+      'Populated', 'Cleared', 'Summoned', 'Teleported', 'Given', 'Killed', 'Set to', 'XP',
+      'Experience', 'Advancement', 'Enchantment', 'Effect', 'Banned', 'Unbanned', 'Pardon',
+      'game','Set'
     ];
-    for (const keyword of feedbackKeywords) {
-      if (trimmed.includes(keyword)) {
-        console.log(`[Bot] 跳过管理员命令反馈消息: ${trimmed}`);
-        return false;
-      }
+  for (const keyword of feedbackKeywords) {
+    if (trimmed.includes(keyword)) {
+      console.log(`[Bot] 跳过命令反馈消息: ${trimmed}`);
+      return false;
     }
   }
   
   return true;
 }
+  
 
 // 异步推送消息到桥接服务
 function pushToBridge(username, message, isWhisper = false) {

@@ -108,19 +108,40 @@ app.post('/qq-webhook', (req, res) => {
             return res.json({});
         }
 
-        // 提取文本消息（只从 message 数组中提取 text 类型）
+        // 构建消息文本，处理不同类型的消息段
         let msgText = '';
         if (data.message && Array.isArray(data.message)) {
             for (const seg of data.message) {
                 if (seg.type === 'text') {
                     msgText += seg.data.text;
+                } else if (seg.type === 'at') {
+                    // 处理艾特：尝试获取被艾特用户的昵称
+                    let atName = '';
+                    // 如果段中有 `data.name` 字段（部分版本提供），使用它
+                    if (seg.data.name) {
+                        atName = seg.data.name;
+                    } else if (seg.data.qq) {
+                        // 否则使用 QQ 号
+                        atName = seg.data.qq;
+                    } else {
+                        atName = 'someone';
+                    }
+                    // 如果艾特的是机器人自己，可以特殊处理（可选）
+                    if (seg.data.qq == BOT_QQ) {
+                        atName = '机器人';
+                    }
+                    msgText += `@${atName}`;
                 }
+                // 其他类型（图片、表情等）忽略
             }
+        } else if (data.raw_message) {
+            // 回退：如果消息不是数组，可能是纯文本（旧版兼容）
+            msgText = data.raw_message;
         }
 
-        // 如果没有任何文本内容，忽略该消息（纯图片/表情）
+        // 如果没有任何文本内容（纯图片/表情/艾特无文本），忽略
         if (!msgText.trim()) {
-            console.log('[Bridge] 消息无文本内容，忽略');
+            console.log('[Bridge] 消息无有效文本内容，忽略');
             return res.json({});
         }
 
