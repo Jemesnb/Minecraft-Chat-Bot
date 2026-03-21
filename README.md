@@ -1,6 +1,6 @@
 # Minecraft Chat Bot
 
-一个功能强大的 Minecraft 聊天机器人，支持多款 AI 模型（Deepseek、Gemini、ChatGPT、Grok、Claude），具备自动重连、私聊回复、防刷屏分段发送、管理员命令执行、Token 统计、Web 管理界面、CDK 兑换等特性。通过 Python 启动器一键运行，无需手动安装 Node 依赖。
+一个功能强大的 Minecraft 聊天机器人，支持多款 AI 模型（Deepseek、Gemini、ChatGPT、Grok、Claude），具备自动重连、私聊回复、防刷屏分段发送、管理员命令执行、Token 统计、Web 管理界面、CDK 兑换、**QQ 互通**等特性。通过 Python 启动器一键运行，无需手动安装 Node 依赖。
 
 ## ✨ 功能特性
 
@@ -37,6 +37,13 @@
   - 查看服务器日志（支持分页、搜索、下载、清空）。
   - 远程发送聊天消息或执行游戏命令（如 `/kill`、`/give`）。
   - 支持可选的 Basic 认证（用户名/密码通过环境变量设置）。
+
+- **QQ 互通**  
+  通过 **NapCat** 实现 Minecraft 与 QQ 群的双向消息同步：
+  - 游戏内公开聊天（不含 AI 指令）自动转发到 QQ 群。
+  - QQ 群消息（纯文本）自动在游戏内显示。
+  - 支持过滤机器人自己的消息，避免循环。
+  - 支持图文混排，仅转发文本部分，纯图片/表情自动忽略。
 
 ## 📦 安装
 
@@ -93,6 +100,15 @@
 |--------|------|--------|
 | `CHAT_DELAY_MS` | 行间发送延迟（毫秒） | `600` |
 
+### QQ 互通配置
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `NAPCAT_API` | NapCat HTTP API 地址 | `http://127.0.0.1:3000` |
+| `QQ_GROUP_ID` | 要互通的 QQ 群号 | 空 |
+| `BOT_QQ` | 机器人 QQ 号（用于过滤自己） | 空 |
+| `BRIDGE_URL` | 桥接服务接收消息的地址 | `http://127.0.0.1:82/api/mc-message` |
+| `BRIDGE_PORT` | 桥接服务监听端口 | `82` |
+
 ## 🚀 运行
 
 ### 使用 Python 启动器（推荐）
@@ -103,7 +119,7 @@ python main.py
 启动器会自动：
 - 检查 Node.js 环境
 - 加载 `.env` 文件中的环境变量
-- 同时启动 Minecraft 机器人（`bot.js`）和 Web 管理界面（`web.js`）
+- 同时启动 Minecraft 机器人（`bot.js`）、Web 管理界面（`web.js`）和 QQ 桥接服务（`qq-bridge.js`）
 
 ### 访问 Web 管理界面
 启动后，打开浏览器访问 `http://你的服务器公网IP:3000`（端口可在 `.env` 中自定义）。  
@@ -160,6 +176,48 @@ python main.py
 - `chat` 字段会以**原发送方式**（公开或私聊）分段发送。
 - 若 AI 返回非 JSON 文本，则按普通聊天处理（仅当包含以 `/` 开头的行时尝试回退执行）。
 
+## 💬 QQ 互通部署教程
+
+### 1. 安装 NapCat
+NapCat 是一个基于 QQ 协议的高性能机器人框架，具体安装过程在此不赘述，请参见官方文档
+
+
+### 2. 配置 NapCat HTTP 服务
+在 NapCat WebUI 中：
+- 进入 **网络配置**
+- 创建HTTP服务器，设置端口（例如 `3000`），**不设置访问令牌**，创建好后，将地址填入NAPCAT_API
+- 进入 **HTTP 客户端**，新建一个客户端，配置：
+  - 上报地址：.env里BRIDGE_URL填的啥就填啥
+  - 消息格式：`Array`
+- 保存配置
+
+### 3. 修改项目 `.env` 文件
+添加或修改以下变量：
+```ini
+# NapCat 配置
+NAPCAT_API=http://127.0.0.1:3000   # 与 NapCat HTTP 服务端口一致
+QQ_GROUP_ID=1091606325            # 你的 QQ 群号
+BOT_QQ=1563715115                 # 机器人 QQ 号
+
+# 桥接服务配置
+BRIDGE_URL=http://127.0.0.1:82/api/mc-message
+BRIDGE_PORT=82
+```
+
+### 4. 启动所有服务
+执行 `python main.py`，启动器会自动启动 bot、Web 和桥接服务。  
+确认桥接服务日志显示 `[Bridge] QQ-Minecraft 桥接服务运行在 http://0.0.0.0:82`。
+
+### 5. 测试互通
+- 在 QQ 群发送一条纯文本消息，游戏内应显示 `[QQ] 昵称: 消息`。
+- 在游戏内发送一条普通聊天（不含 `#` 前缀），QQ 群应显示 `[Minecraft] 玩家名: 消息`。
+- 私聊、AI 指令、帮助命令不会被转发。
+
+### 注意事项
+- NapCat 的 HTTP API 端口不能与 Web 管理端口（6099）冲突。
+- 如果 NapCat 和桥接服务不在同一台服务器，需要将 `127.0.0.1` 替换为实际 IP，并确保防火墙放行对应端口。
+- 如果 NapCat 启用了访问令牌，请在桥接服务代码中添加 `NAPCAT_ACCESS_TOKEN` 环境变量支持（参考 `qq-bridge.js` 注释）。
+
 ## 📊 Token 统计
 
 程序退出时会打印累计 Token 使用量和各模型调用次数，例如：
@@ -190,6 +248,12 @@ Claude 调用次数: 2
 
 - **Web 界面无法访问**  
   检查服务器防火墙是否开放了 `WEB_PORT` 端口，以及是否在云控制台安全组中放行。确保 `web.js` 已成功启动（控制台应有日志输出）。
+
+- **QQ 互通无消息**  
+  - 确认 NapCat 已正确配置 HTTP 上报地址且端口未冲突。
+  - 检查桥接服务日志是否有 `[Bridge] 收到 webhook 请求` 输出。
+  - 确认 `.env` 中的 `QQ_GROUP_ID` 和 `BOT_QQ` 正确。
+  - 手动测试 NapCat API：`curl -X POST http://127.0.0.1:3000/send_group_msg -d '{"group_id":群号,"message":"test"}'`，若返回 404 需调整 `NAPCAT_API` 路径。
 
 ## 🔧 特殊说明
 - **Gemini** 当前使用的是 OpenAI 协议，后续可能会改回原生协议。
