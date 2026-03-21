@@ -10,6 +10,7 @@ const NAPCAT_API = process.env.NAPCAT_API || 'http://127.0.0.1:3000';
 const QQ_GROUP_ID = parseInt(process.env.QQ_GROUP_ID, 10) || 0;
 const BOT_QQ = parseInt(process.env.BOT_QQ, 10) || 0;
 const BRIDGE_PORT = process.env.BRIDGE_PORT || 82;
+const MC_USERNAME = process.env.MC_USERNAME || 'DeepBot';
 
 // Minecraft 机器人内部 API 端口文件
 const BOT_PORT_FILE = path.join(__dirname, '.bot_port');
@@ -34,7 +35,7 @@ function updateBotPort() {
 updateBotPort();
 setInterval(updateBotPort, 5000);
 
-// 向 Minecraft 机器人发送公开消息
+// 向 Minecraft 机器人发送公开消息（QQ → MC）
 async function sendToMinecraft(message) {
     if (!botApiPort) {
         console.warn('[Bridge] Bot API 端口未就绪，无法发送');
@@ -43,7 +44,7 @@ async function sendToMinecraft(message) {
     const url = `http://127.0.0.1:${botApiPort}/api/execute`;
     const payload = {
         command: message,
-        type: 'chat'      // 公开聊天
+        type: 'chat'
     };
     try {
         await axios.post(url, payload);
@@ -62,17 +63,16 @@ async function sendToMinecraft(message) {
 const app = express();
 app.use(bodyParser.json());
 
-// 接收来自 Minecraft 机器人的消息推送
+// 接收来自 Minecraft 机器人的消息推送（MC → QQ）
 app.post('/api/mc-message', async (req, res) => {
     const { username, message, isWhisper, time } = req.body;
     console.log(`[Bridge] 收到 Minecraft 消息: ${username}: ${message}`);
 
-    // 过滤：不转发机器人自己发送的消息（避免循环）
-    if (username === process.env.MC_USERNAME) {
+    // 过滤机器人自己的消息
+    if (username === MC_USERNAME) {
         console.log('[Bridge] 忽略机器人自己的消息');
         return res.json({});
     }
-    // 可选：过滤掉已带 [QQ] 前缀的消息，防止二次转发
     if (message.startsWith('[QQ]')) {
         console.log('[Bridge] 忽略已标记的 QQ 消息');
         return res.json({});
@@ -95,49 +95,45 @@ app.post('/api/mc-message', async (req, res) => {
     res.json({});
 });
 
-// 接收 NapCat 上报的 QQ 群消息
+// 接收 NapCat 上报的 QQ 群消息（QQ → MC）
 app.post('/qq-webhook', (req, res) => {
     const data = req.body;
     console.log('[Bridge] 收到 webhook 请求');
-    console.log('post_type:', data.post_type);
-    console.log('message_type:', data.message_type);
-    console.log('group_id:', data.group_id, 'expected:', QQ_GROUP_ID);
-    
+
     // 只处理群消息
-    if (data.post_type === 'message' && data.message_type === 'group' && Number(data.group_id) === Number(QQ_GROUP_ID)) {
-        console.log('[Bridge] 匹配群消息条件');
+    if (data.post_type === 'message' && data.message_type === 'group' && Number(data.group_id) === QQ_GROUP_ID) {
         // 过滤机器人自己的消息
         if (data.user_id == BOT_QQ) {
             console.log('[Bridge] 忽略机器人自己发送的消息');
             return res.json({});
         }
 
-        // 提取文本消息
+        // 提取文本消息（只从 message 数组中提取 text 类型）
         let msgText = '';
-        if (data.raw_message) {
-            msgText = data.raw_message;
-        } else if (data.message && Array.isArray(data.message)) {
+        if (data.message && Array.isArray(data.message)) {
             for (const seg of data.message) {
                 if (seg.type === 'text') {
                     msgText += seg.data.text;
                 }
             }
         }
-        console.log('[Bridge] 提取的文本:', msgText);
 
-        if (msgText.trim()) {
-            const senderName = data.sender?.nickname || `QQ-${data.user_id}`;
-            const fullMsg = `[QQ] ${senderName}: ${msgText}`;
-            console.log(`[Bridge] 转发 QQ 消息: ${fullMsg}`);
-            sendToMinecraft(fullMsg);
-        } else {
+        // 如果没有任何文本内容，忽略该消息（纯图片/表情）
+        if (!msgText.trim()) {
             console.log('[Bridge] 消息无文本内容，忽略');
+            return res.json({});
         }
+
+        const senderName = data.sender?.nickname || `QQ-${data.user_id}`;
+        const fullMsg = `[QQ] ${senderName}: ${msgText}`;
+        console.log(`[Bridge] 转发 QQ 消息: ${fullMsg}`);
+        sendToMinecraft(fullMsg);
     } else {
         console.log('[Bridge] 消息不符合群消息条件');
     }
     res.json({});
 });
+
 // 启动桥接服务
 app.listen(BRIDGE_PORT, '0.0.0.0', () => {
     console.log(`[Bridge] QQ-Minecraft 桥接服务运行在 http://0.0.0.0:${BRIDGE_PORT}`);
