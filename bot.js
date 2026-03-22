@@ -299,7 +299,7 @@ function shouldPushToBridge(message, sender) {
       'Successfully executed', 'Failed to execute', 'No targets matched', 'Invalid', 'Error',
       'Populated', 'Cleared', 'Summoned', 'Teleported', 'Given', 'Killed', 'Set to', 'XP',
       'Experience', 'Advancement', 'Enchantment', 'Effect', 'Banned', 'Unbanned', 'Pardon',
-      'game','Set'
+      'game','Set','effect'
     ];
   for (const keyword of feedbackKeywords) {
     if (trimmed.includes(keyword)) {
