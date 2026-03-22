@@ -186,7 +186,7 @@ NapCat 是一个基于 QQ 协议的高性能机器人框架，具体安装过程
 在 NapCat WebUI 中：
 - 进入 **网络配置**
 - 创建HTTP服务器，设置端口（例如 `3000`），**不设置访问令牌**，创建好后，将地址填入NAPCAT_API
-- 进入 **HTTP 客户端**，新建一个客户端，配置：
+- 再创建一个 **HTTP 客户端**，配置：
   - 上报地址：.env里BRIDGE_URL填的啥就填啥
   - 消息格式：`Array`
 - 保存配置
@@ -203,6 +203,8 @@ BOT_QQ=1563715115                 # 机器人 QQ 号
 BRIDGE_URL=http://127.0.0.1:82/api/mc-message
 BRIDGE_PORT=82
 ```
+
+**不要改后面的/api/mc-message！！！！！！**
 
 ### 4. 启动所有服务
 执行 `python main.py`，启动器会自动启动 bot、Web 和桥接服务。  
