@@ -65,6 +65,37 @@ const BOT_ADMIN = process.env.BOT_ADMIN || ''
 // 桥接服务地址（如果启用）
 const BRIDGE_URL = process.env.BRIDGE_URL || ''
 
+// ==================== 上下文记忆配置 ====================
+const MAX_CONTEXT_ROUNDS = parseInt(process.env.MAX_CONTEXT_ROUNDS || '3', 10) // 0 表示禁用
+const ADMIN_CONTEXT = process.env.ADMIN_CONTEXT === 'true' // 管理员是否启用上下文，默认 false
+const contextMemory = new Map() // 玩家名 -> 消息数组 [{ role, content }]
+
+// 获取玩家的上下文消息（最近 N 轮）
+function getContext(playerName) {
+  if (MAX_CONTEXT_ROUNDS <= 0) return []
+  const context = contextMemory.get(playerName) || []
+  const maxItems = MAX_CONTEXT_ROUNDS * 2 // 每轮包含 user 和 assistant
+  return context.slice(-maxItems)
+}
+
+// 更新上下文
+function updateContext(playerName, userMsg, aiReply) {
+  if (MAX_CONTEXT_ROUNDS <= 0) return
+  let context = contextMemory.get(playerName) || []
+  context.push({ role: 'user', content: userMsg })
+  context.push({ role: 'assistant', content: aiReply })
+  const maxItems = MAX_CONTEXT_ROUNDS * 2
+  if (context.length > maxItems) {
+    context = context.slice(-maxItems)
+  }
+  contextMemory.set(playerName, context)
+}
+
+// 清空指定玩家的上下文
+function clearContext(playerName) {
+  contextMemory.delete(playerName)
+}
+
 // -------------------- AI 提示词--------------------
 const PROMPT_NORMAL = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
 const PROMPT_ADMIN = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
@@ -404,12 +435,20 @@ async function callDeepseek(query, sender) {
   // 使用统一的提示词变量，根据发送者选择
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
+  // 构建消息数组：系统提示 + 历史上下文（根据配置决定管理员是否添加上下文）
+  let context = getContext(sender)
+  if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
+    context = [] // 管理员且未启用上下文时，清空上下文
+  }
+  const messages = [
+    { role: 'system', content: systemContent },
+    ...context,
+    { role: 'user', content: query }
+  ]
+
   const body = {
     model: DEEPSEEK_MODEL,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: query }
-    ],
+    messages,
     stream: false
   }
 
@@ -437,12 +476,19 @@ async function callGemini(query, sender) {
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
+  let context = getContext(sender)
+  if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
+    context = []
+  }
+  const messages = [
+    { role: 'system', content: systemContent },
+    ...context,
+    { role: 'user', content: query }
+  ]
+
   const body = {
     model: GEMINI_MODEL,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: query }
-    ],
+    messages,
     stream: false
   }
 
@@ -470,12 +516,19 @@ async function callGPT(query, sender) {
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
+  let context = getContext(sender)
+  if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
+    context = []
+  }
+  const messages = [
+    { role: 'system', content: systemContent },
+    ...context,
+    { role: 'user', content: query }
+  ]
+
   const body = {
     model: GPT_MODEL,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: query }
-    ],
+    messages,
     stream: false
   }
 
@@ -503,12 +556,19 @@ async function callGrok(query, sender) {
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
+  let context = getContext(sender)
+  if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
+    context = []
+  }
+  const messages = [
+    { role: 'system', content: systemContent },
+    ...context,
+    { role: 'user', content: query }
+  ]
+
   const body = {
     model: GROK_MODEL,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: query }
-    ],
+    messages,
     stream: false
   }
 
@@ -536,12 +596,19 @@ async function callClaude(query, sender) {
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
+  let context = getContext(sender)
+  if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
+    context = []
+  }
+  const messages = [
+    { role: 'system', content: systemContent },
+    ...context,
+    { role: 'user', content: query }
+  ]
+
   const body = {
     model: CLAUDE_MODEL,
-    messages: [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: query }
-    ],
+    messages,
     stream: false
   }
 
@@ -719,6 +786,15 @@ async function processMessage(m) {
     }
   }
 
+  // ========== 清除上下文命令（所有玩家可用） ==========
+  if (trimmed === '#clear') {
+    clearContext(m.username)
+    const reply = '你的对话上下文已清空。'
+    if (m.whisper) bot.whisper(m.username, reply)
+    else bot.chat(reply)
+    return
+  }
+
   // ========== CDK 命令 ==========
   // #addCDK - 仅游戏管理员可用
   if (ADMIN_NAME && m.username === ADMIN_NAME && trimmed.startsWith('#addCDK ')) {
@@ -783,9 +859,9 @@ async function processMessage(m) {
 
   // 帮助命令（支持公开和私聊）
   if (trimmed === '#bot help') {
-    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表';
-    await sendChunks(helpText, m.username, true); // 强制私聊
-    return;
+    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表\n=========上下文命令=========\n#clear - 清空你的对话上下文（所有玩家可用）'
+    await sendChunks(helpText, m.username, true) // 强制私聊
+    return
   }
 
   const isDeepseek = m.message.startsWith(DEEPSEEK_PREFIX)
@@ -856,6 +932,11 @@ async function processMessage(m) {
 
     replyText = (replyText || '').trim() || '(空回复)'
     await handleReply(replyText, m.username, m.whisper)
+
+    // ========== 更新上下文（仅当回复有效） ==========
+    if (replyText !== '(空回复)') {
+      updateContext(m.username, query, replyText)
+    }
 
   } catch (err) {
     const modelName = isDeepseek ? 'Deepseek' : (isGemini ? 'Gemini' : (isGPT ? 'GPT' : (isGrok ? 'Grok' : 'Claude')))
