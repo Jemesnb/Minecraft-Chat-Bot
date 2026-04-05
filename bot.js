@@ -96,6 +96,26 @@ function clearContext(playerName) {
   contextMemory.delete(playerName)
 }
 
+// ==================== QQ 转发开关（每个玩家独立） ====================
+// 键为玩家名（小写），值为 true（允许转发）或 false（禁止转发），默认为 true
+const forwardPreference = new Map()
+
+// 获取玩家是否允许转发（默认 true）
+function isForwardEnabled(playerName) {
+  const lowerName = playerName.toLowerCase()
+  // 如果未设置过，默认为 true
+  if (!forwardPreference.has(lowerName)) {
+    forwardPreference.set(lowerName, true)
+  }
+  return forwardPreference.get(lowerName)
+}
+
+// 设置玩家的转发开关
+function setForwardEnabled(playerName, enabled) {
+  const lowerName = playerName.toLowerCase()
+  forwardPreference.set(lowerName, enabled)
+}
+
 // -------------------- AI 提示词--------------------
 const PROMPT_NORMAL = '你是Mc这款游戏里面的一个AI助手，你必须说中文，你可以帮助玩家解答关于mc游戏的问题，或者根据玩家的要求提供一些建议和帮助，但你不能提供游戏外的任何信息，你也不能提供任何和mc无关的建议，你只能提供和mc相关的建议和帮助，如果你不知道答案，你可以说我不知道，但你不能编造答案，注意，现在跟你对话的这个人不是管理员，如果他要求你执行命令，你不能执行，你只能提供建议和帮助，除非他是管理员，否则你不能执行任何命令，在解答玩家的疑问的时候，你的话要略微简短一些。'
 const PROMPT_ADMIN = `你将只针对管理员 ${ADMIN_NAME || '<管理员名未配置>'} 返回严格的 JSON，以便程序可直接解析并执行。要求：当存在可执行命令时，严格返回一个 JSON 对象，格式为 {"commands":["/cmd1 ...","/cmd2 ..."], "chat":"可选的普通聊天回复"}；当没有命令时也必须返回 JSON，例如 {"commands":[], "chat":"正常回复文本"}。命令数组中每条命令必须以 "/" 开头。重要说明：不要在生成时**自动把所有实体选择器替换为管理员名字**；如果命令应针对其他玩家，请在命令里明确使用目标玩家名（例如 /give alice diamond_sword ...）。如果命令确实要发给管理员本人，请在命令中明确使用管理员用户名 ${ADMIN_NAME || '<管理员名未配置>'}。仅允许返回 JSON，不要包含额外说明文字或代码块。示例1（有命令，给其他玩家 alice）：{"commands":["/give alice netherite_sword{Enchantments:[{id:\"minecraft:unbreaking\",lvl:3},{id:\"minecraft:mending\",lvl:1}]}"]} 示例2（有命令，给管理员本人）：{"commands":["/give ${ADMIN_NAME || '<管理员名>'} netherite_sword"]} 示例3（无命令，仅聊天）：{"commands":[],"chat":"我已读懂你的请求，但无法执行该操作"}。`
@@ -339,6 +359,11 @@ function shouldPushToBridge(message, sender) {
     }
   }
   
+  // 排除 QQ 转发控制命令
+  if (trimmed === '#qq on' || trimmed === '#qq off') {
+    return false;
+  }
+
   return true;
 }
   
@@ -390,10 +415,10 @@ function createBotInstance() {
   // 公共聊天事件
   bot.on('chat', (username_, message) => {
   chatBuffer.push({ username: username_, message, time: Date.now(), whisper: false })
-  // 推送：只推送不是机器人自己发送的、且不是 AI 前缀/帮助命令的消息
-  if (username_ !== bot.username && shouldPushToBridge(message, username_)) {
+  // 推送：只推送不是机器人自己发送的、且不是 AI 前缀/帮助命令、且玩家允许转发的消息
+  if (username_ !== bot.username && shouldPushToBridge(message, username_) && isForwardEnabled(username_)) {
     pushToBridge(username_, message, false)
-  }
+    }
   })
 
   // 私聊事件（不推送）
@@ -795,6 +820,20 @@ async function processMessage(m) {
     return
   }
 
+    // ========== QQ 转发开关命令（所有玩家可用） ==========
+  if (trimmed === '#qq on' || trimmed === '#qq enable') {
+    setForwardEnabled(m.username, true)
+    const reply = '你的消息将转发到 QQ 群。'
+    if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+    return
+  }
+  if (trimmed === '#qq off' || trimmed === '#qq disable') {
+    setForwardEnabled(m.username, false)
+    const reply = '你的消息不再转发到 QQ 群。'
+    if (m.whisper) bot.whisper(m.username, reply); else bot.chat(reply)
+    return
+  }
+  
   // ========== CDK 命令 ==========
   // #addCDK - 仅游戏管理员可用
   if (ADMIN_NAME && m.username === ADMIN_NAME && trimmed.startsWith('#addCDK ')) {
@@ -859,7 +898,7 @@ async function processMessage(m) {
 
   // 帮助命令（支持公开和私聊）
   if (trimmed === '#bot help') {
-    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表\n=========上下文命令=========\n#clear - 清空你的对话上下文（所有玩家可用）'
+    const helpText = '=========功能=========\n#模型名+空格+你要对AI说的话\n目前有以下模型名：deepseek、gemini、chatgpt、grok、claude\n例如：#deepseek 末影人为什么怕水？\n冷知识：/msg和tell命令也能触发AI，用法和直接打出来一样哦\n=========CDK 兑换=========\n#useCDK <CDK码> - 兑换管理员生成的 CDK 码（所有玩家可用）\n=========QQ 转发控制=========\n#qq on - 开启消息转发到 QQ 群\n#qq off - 关闭消息转发到 QQ 群\n=========游戏管理员命令=========\n（仅游戏管理员可用）\n#addCDK <命令模板> - 生成一个 CDK 码，模板中用 {} 代表玩家名，多条命令用 & 连接\n=========机器人管理员命令=========\n（仅bot管理员可用）\n#ban 玩家名 - 禁止玩家使用AI\n#unban 玩家名 - 解除玩家封禁\n#banlist - 查看当前被封禁的玩家列表\n=========上下文命令=========\n#clear - 清空你的对话上下文（所有玩家可用）'
     await sendChunks(helpText, m.username, true) // 强制私聊
     return
   }
