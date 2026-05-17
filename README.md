@@ -6,7 +6,8 @@
 
 - **多 AI 模型支持**  
   通过简单的命令前缀切换模型（如 `#deepseek`、`#gemini`、`#chatgpt`、`#grok`、`#claude`），每个模型均可独立配置 API 密钥、端点、路径和模型名称。  
-  DeepSeek 额外支持**思考模式**，可通过 `DEEPSEEK_THINKING` 开关，并调节推理强度 `DEEPSEEK_REASONING_EFFORT`（low/medium/high）。
+  DeepSeek 额外支持**思考模式**，可通过 `DEEPSEEK_THINKING` 开关，并调节推理强度 `DEEPSEEK_REASONING_EFFORT`（low/medium/high）。  
+  Gemini 和 Claude 使用**原生 API 协议**，其余模型使用 OpenAI 兼容协议。
 
 - **自动重连**  
   与服务器意外断开后，自动尝试重新连接（可配置重连延迟和最大尝试次数），登录成功时重置计数。
@@ -75,21 +76,21 @@
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `{MODEL}_API_KEY` | API 密钥 | 空（未设置时禁用该模型） |
-| `{MODEL}_ENDPOINT` | API 基础地址 | 官方地址（见下表） |
-| `{MODEL}_PATH` | API 路径 | `/v1/chat/completions` |
+| `{MODEL}_ENDPOINT` | API 基础地址 | 见下表 |
+| `{MODEL}_PATH` | API 路径（Gemini/Claude 使用原生协议，不从此变量取值） | `/v1/chat/completions` |
 | `{MODEL}_MODEL` | 模型名称 | 见下表 |
 | `{MODEL}_PREFIX` | 触发前缀（注意末尾空格） | `#{小写模型名} ` |
 | `DEEPSEEK_THINKING` | DeepSeek 思考模式开关（true/false） | `true` |
 | `DEEPSEEK_REASONING_EFFORT` | DeepSeek 推理强度：`low` / `medium` / `high` | `medium` |
 
 #### 各模型默认值
-| 模型 | 默认 ENDPOINT | 默认 MODEL |
+| 模型 | 默认 ENDPOINT | 默认 MODEL | 协议 |
 |------|---------------|------------|
-| Deepseek | `https://api.deepseek.com` | `deepseek-reasoner` |
-| Gemini | `https://generativelanguage.googleapis.com` | `gemini-pro` |
-| ChatGPT | `https://api.openai.com` | `gpt-3.5-turbo` |
-| Grok | `https://api.x.ai` | `grok-1` |
-| Claude | `https://api.anthropic.com` | `claude-3-opus-latest` |
+| Deepseek | `https://api.deepseek.com` | `deepseek-reasoner` | OpenAI 协议 |
+| Gemini | `https://generativelanguage.googleapis.com` | `gemini-pro` | **原生协议** |
+| ChatGPT | `https://api.openai.com` | `gpt-3.5-turbo` | OpenAI 协议 |
+| Grok | `https://api.x.ai` | `grok-1` | OpenAI 协议 |
+| Claude | `https://api.anthropic.com` | `claude-3-opus-latest` | **原生协议** |
 
 ### Web 管理配置
 | 变量名 | 说明 | 默认值 |

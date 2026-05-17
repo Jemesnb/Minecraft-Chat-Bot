@@ -129,7 +129,7 @@ const DEEPSEEK_PREFIX = process.env.DEEPSEEK_PREFIX || '#deepseek '
 const DEEPSEEK_THINKING = process.env.DEEPSEEK_THINKING !== 'false' // 默认开启思考模式
 const DEEPSEEK_REASONING_EFFORT = process.env.DEEPSEEK_REASONING_EFFORT || 'medium'
 
-// -------------------- Gemini 配置（默认 OpenAI 兼容中转）--------------------
+// -------------------- Gemini 配置（原生协议）--------------------
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GEMINI_ENDPOINT = process.env.GEMINI_ENDPOINT || 'https://generativelanguage.googleapis.com'
 const GEMINI_PATH = process.env.GEMINI_PATH || '/v1/chat/completions'
@@ -150,7 +150,7 @@ const GROK_PATH = process.env.GROK_PATH || '/v1/chat/completions'
 const GROK_MODEL = process.env.GROK_MODEL || 'grok-1'
 const GROK_PREFIX = process.env.GROK_PREFIX || '#grok '
 
-// -------------------- Claude 配置（OpenAI 协议）--------------------
+// -------------------- Claude 配置（原生协议）--------------------
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || ''
 const CLAUDE_ENDPOINT = process.env.CLAUDE_ENDPOINT || 'https://api.anthropic.com'
 const CLAUDE_PATH = process.env.CLAUDE_PATH || '/v1/chat/completions'
@@ -502,11 +502,10 @@ async function callDeepseek(query, sender) {
   }
 }
 
-// ==================== Gemini 调用（OpenAI 兼容格式）====================
+// ==================== Gemini 调用（原生协议）====================
 async function callGemini(query, sender) {
   const base = GEMINI_ENDPOINT.replace(/\/$/, '')
-  const path = GEMINI_PATH.startsWith('/') ? GEMINI_PATH : '/' + GEMINI_PATH
-  const url = base + path
+  const url = `${base}/v1/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
@@ -514,20 +513,20 @@ async function callGemini(query, sender) {
   if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
     context = []
   }
-  const messages = [
-    { role: 'system', content: systemContent },
-    ...context,
-    { role: 'user', content: query }
-  ]
+
+  // 转换上下文格式：assistant → model
+  const contents = context.map(msg => ({
+    role: msg.role === 'assistant' ? 'model' : msg.role,
+    parts: [{ text: msg.content }]
+  }))
+  contents.push({ role: 'user', parts: [{ text: query }] })
 
   const body = {
-    model: GEMINI_MODEL,
-    messages,
-    stream: false
+    system_instruction: { parts: [{ text: systemContent }] },
+    contents
   }
 
   const headers = { 'Content-Type': 'application/json' }
-  if (GEMINI_API_KEY) headers['Authorization'] = `Bearer ${GEMINI_API_KEY}`
 
   try {
     console.log(`[Gemini] 调用 URL: ${url}`)
@@ -622,11 +621,10 @@ async function callGrok(query, sender) {
   }
 }
 
-// ==================== Claude 调用（OpenAI 协议）====================
+// ==================== Claude 调用（原生协议）====================
 async function callClaude(query, sender) {
   const base = CLAUDE_ENDPOINT.replace(/\/$/, '')
-  const path = CLAUDE_PATH.startsWith('/') ? CLAUDE_PATH : '/' + CLAUDE_PATH
-  const url = base + path
+  const url = `${base}/v1/messages`
 
   const systemContent = (ADMIN_NAME && sender === ADMIN_NAME) ? PROMPT_ADMIN : PROMPT_NORMAL
 
@@ -634,20 +632,25 @@ async function callClaude(query, sender) {
   if (ADMIN_NAME && sender === ADMIN_NAME && !ADMIN_CONTEXT) {
     context = []
   }
+
+  // Claude 原生消息格式与 OpenAI 兼容，直接复用
   const messages = [
-    { role: 'system', content: systemContent },
     ...context,
     { role: 'user', content: query }
   ]
 
   const body = {
     model: CLAUDE_MODEL,
-    messages,
-    stream: false
+    max_tokens: 4096,
+    system: systemContent,
+    messages
   }
 
-  const headers = { 'Content-Type': 'application/json' }
-  if (CLAUDE_API_KEY) headers['Authorization'] = `Bearer ${CLAUDE_API_KEY}`
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': CLAUDE_API_KEY,
+    'anthropic-version': '2023-06-01'
+  }
 
   try {
     console.log(`[Claude] 调用 URL: ${url}`)
@@ -950,11 +953,11 @@ async function processMessage(m) {
       replyText = data?.choices?.[0]?.message?.content || JSON.stringify(data)
     } else if (isGemini) {
       data = await callGemini(query, m.username)
-      if (data?.usage?.total_tokens) {
-        TOTAL_TOKENS_USED += data.usage.total_tokens
+      if (data?.usageMetadata?.promptTokenCount) {
+        TOTAL_TOKENS_USED += data.usageMetadata.promptTokenCount + (data.usageMetadata.candidatesTokenCount || 0)
         GEMINI_CALLS++
       }
-      replyText = data?.choices?.[0]?.message?.content || JSON.stringify(data)
+      replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data)
     } else if (isGPT) {
       data = await callGPT(query, m.username)
       if (data?.usage?.total_tokens) {
@@ -971,11 +974,11 @@ async function processMessage(m) {
       replyText = data?.choices?.[0]?.message?.content || JSON.stringify(data)
     } else {
       data = await callClaude(query, m.username)
-      if (data?.usage?.total_tokens) {
-        TOTAL_TOKENS_USED += data.usage.total_tokens
+      if (data?.usage?.input_tokens) {
+        TOTAL_TOKENS_USED += data.usage.input_tokens + (data.usage.output_tokens || 0)
         CLAUDE_CALLS++
       }
-      replyText = data?.choices?.[0]?.message?.content || JSON.stringify(data)
+      replyText = data?.content?.[0]?.text || JSON.stringify(data)
     }
 
     replyText = (replyText || '').trim() || '(空回复)'
