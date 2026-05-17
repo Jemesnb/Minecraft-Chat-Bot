@@ -51,7 +51,7 @@ console.warn = function(...args) {
 const NAPCAT_API = process.env.NAPCAT_API || 'http://127.0.0.1:3000';
 const QQ_GROUP_ID = parseInt(process.env.QQ_GROUP_ID, 10) || 0;
 const BOT_QQ = parseInt(process.env.BOT_QQ, 10) || 0;
-const BRIDGE_PORT = process.env.BRIDGE_PORT || 82;
+const QQ_BRIDGE_PORT = process.env.QQ_BRIDGE_PORT || process.env.BRIDGE_PORT || 82;
 const MC_USERNAME = process.env.MC_USERNAME || 'DeepBot';
 
 // Minecraft 机器人内部 API 端口文件
@@ -192,7 +192,7 @@ app.post('/qq-webhook', (req, res) => {
 });
 
 // 启动桥接服务
-app.listen(BRIDGE_PORT, '0.0.0.0', () => {
-  console.log(`[Bridge] QQ-Minecraft 桥接服务运行在 http://0.0.0.0:${BRIDGE_PORT}`);
-  console.log(`[Bridge] 请确保 NapCat 的 HTTP 上报地址设为 http://127.0.0.1:${BRIDGE_PORT}/qq-webhook`);
+app.listen(QQ_BRIDGE_PORT, '0.0.0.0', () => {
+  console.log(`[Bridge] QQ-Minecraft 桥接服务运行在 http://0.0.0.0:${QQ_BRIDGE_PORT}`);
+  console.log(`[Bridge] 请确保 NapCat 的 HTTP 上报地址设为 http://127.0.0.1:${QQ_BRIDGE_PORT}/qq-webhook`);
 });

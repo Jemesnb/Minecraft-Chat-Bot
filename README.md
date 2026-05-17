@@ -107,11 +107,11 @@
 ### QQ 互通配置
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
+| `QQ_BRIDGE_URL` | 桥接服务接收消息的地址（兼容旧名 `BRIDGE_URL`） | `http://127.0.0.1:82/api/mc-message` |
+| `QQ_BRIDGE_PORT` | 桥接服务监听端口（兼容旧名 `BRIDGE_PORT`） | `82` |
 | `NAPCAT_API` | NapCat HTTP API 地址 | `http://127.0.0.1:3000` |
 | `QQ_GROUP_ID` | 要互通的 QQ 群号 | 空 |
 | `BOT_QQ` | 机器人 QQ 号（用于过滤自己） | 空 |
-| `BRIDGE_URL` | 桥接服务接收消息的地址 | `http://127.0.0.1:82/api/mc-message` |
-| `BRIDGE_PORT` | 桥接服务监听端口 | `82` |
 
 ## 🚀 运行
 
@@ -193,7 +193,7 @@ NapCat 是一个基于 QQ 协议的高性能机器人框架，具体安装过程
 - 再创建一个 **HTTP 客户端**，配置：
   - 上报地址：BRIDGE_URL改一下（看下面的例子）
   - 例：http://127.0.0.1:11451/api/mc-message要填http://127.0.0.1:11451/qq-webhook
-  - **如果你用自定义端口的话，BRIDGE_PORT要改成和BRIDGE_URL一样的端口**
+  - **如果你用自定义端口的话，QQ_BRIDGE_PORT要改成和QQ_BRIDGE_URL一样的端口**
   - 消息格式：`Array`
 - 保存配置
 
@@ -205,9 +205,9 @@ NAPCAT_API=http://127.0.0.1:3000   # 与 NapCat HTTP 服务端口一致
 QQ_GROUP_ID=1091606325            # 你的 QQ 群号
 BOT_QQ=1563715115                 # 机器人 QQ 号
 
-# 桥接服务配置
-BRIDGE_URL=http://127.0.0.1:82/api/mc-message
-BRIDGE_PORT=82
+# QQ 互通配置
+QQ_BRIDGE_URL=http://127.0.0.1:82/api/mc-message
+QQ_BRIDGE_PORT=82
 ```
 
 **不要改后面的/api/mc-message！！！！！！**

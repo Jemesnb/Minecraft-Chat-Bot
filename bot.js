@@ -62,8 +62,8 @@ const ADMIN_NAME = (typeof process.env.ADMIN_NAME !== 'undefined') ? process.env
 // 机器人管理员名称（可执行封禁命令），默认为空表示无机器人管理员
 const BOT_ADMIN = process.env.BOT_ADMIN || ''
 
-// 桥接服务地址（如果启用）
-const BRIDGE_URL = process.env.BRIDGE_URL || ''
+// 桥接服务地址（如果启用，兼容旧名 BRIDGE_URL）
+const QQ_BRIDGE_URL = process.env.QQ_BRIDGE_URL || process.env.BRIDGE_URL || ''
 
 // ==================== 上下文记忆配置 ====================
 const MAX_CONTEXT_ROUNDS = parseInt(process.env.MAX_CONTEXT_ROUNDS || '3', 10) // 0 表示禁用
@@ -373,10 +373,10 @@ function shouldPushToBridge(message, sender) {
 // 异步推送消息到桥接服务
 function pushToBridge(username, message, isWhisper = false) {
   console.log(`[Bot] 尝试推送: ${username} -> ${message}`);
-  if (!BRIDGE_URL) return
+  if (!QQ_BRIDGE_URL) return
   // 只推送公开聊天（私聊不推送）
   if (isWhisper) return
-  fetch(BRIDGE_URL, {
+  fetch(QQ_BRIDGE_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
