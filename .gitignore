@@ -1,0 +1,7 @@
+node_modules/
+.env
+.env.*
+logs/
+.bot_port
+banned.json
+cdk.json

@@ -126,6 +126,8 @@ const DEEPSEEK_ENDPOINT = process.env.DEEPSEEK_ENDPOINT || 'https://api.deepseek
 const DEEPSEEK_PATH = process.env.DEEPSEEK_PATH || '/v1/chat/completions'
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-reasoner'
 const DEEPSEEK_PREFIX = process.env.DEEPSEEK_PREFIX || '#deepseek '
+const DEEPSEEK_THINKING = process.env.DEEPSEEK_THINKING !== 'false' // 默认开启思考模式
+const DEEPSEEK_REASONING_EFFORT = process.env.DEEPSEEK_REASONING_EFFORT || 'medium'
 
 // -------------------- Gemini 配置（默认 OpenAI 兼容中转）--------------------
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
@@ -475,6 +477,13 @@ async function callDeepseek(query, sender) {
     model: DEEPSEEK_MODEL,
     messages,
     stream: false
+  }
+
+  // 思考模式参数（仅 DEEPSEEK_THINKING=true 时添加）
+  if (DEEPSEEK_THINKING) {
+    body.reasoning_effort = DEEPSEEK_REASONING_EFFORT
+  } else {
+    body.thinking = { type: 'disabled' }
   }
 
   const headers = { 'Content-Type': 'application/json' }

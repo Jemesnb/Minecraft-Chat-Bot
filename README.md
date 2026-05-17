@@ -5,7 +5,8 @@
 ## ✨ 功能特性
 
 - **多 AI 模型支持**  
-  通过简单的命令前缀切换模型（如 `#deepseek`、`#gemini`、`#chatgpt`、`#grok`、`#claude`），每个模型均可独立配置 API 密钥、端点、路径和模型名称。
+  通过简单的命令前缀切换模型（如 `#deepseek`、`#gemini`、`#chatgpt`、`#grok`、`#claude`），每个模型均可独立配置 API 密钥、端点、路径和模型名称。  
+  DeepSeek 额外支持**思考模式**，可通过 `DEEPSEEK_THINKING` 开关，并调节推理强度 `DEEPSEEK_REASONING_EFFORT`（low/medium/high）。
 
 - **自动重连**  
   与服务器意外断开后，自动尝试重新连接（可配置重连延迟和最大尝试次数），登录成功时重置计数。
@@ -78,6 +79,8 @@
 | `{MODEL}_PATH` | API 路径 | `/v1/chat/completions` |
 | `{MODEL}_MODEL` | 模型名称 | 见下表 |
 | `{MODEL}_PREFIX` | 触发前缀（注意末尾空格） | `#{小写模型名} ` |
+| `DEEPSEEK_THINKING` | DeepSeek 思考模式开关（true/false） | `true` |
+| `DEEPSEEK_REASONING_EFFORT` | DeepSeek 推理强度：`low` / `medium` / `high` | `medium` |
 
 #### 各模型默认值
 | 模型 | 默认 ENDPOINT | 默认 MODEL |
