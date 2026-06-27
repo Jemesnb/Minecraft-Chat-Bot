@@ -5,47 +5,8 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-// ==================== 日志初始化 ====================
-const LOG_DIR = path.join(__dirname, 'logs');
-if (!fs.existsSync(LOG_DIR)) {
-  fs.mkdirSync(LOG_DIR, { recursive: true });
-}
-
-// 获取当前日期作为日志文件名 (YYYY-MM-DD)
-const dateStr = new Date().toISOString().slice(0, 10);
-const logFile = path.join(LOG_DIR, `${dateStr}.log`);
-
-// 保存原始控制台方法
-const originalLog = console.log;
-const originalError = console.error;
-const originalWarn = console.warn;
-
-// 辅助函数：写入日志文件（同步追加）
-function writeToLog(level, args) {
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] [${level}] ${Array.from(args).map(arg =>
-    typeof arg === 'string' ? arg : JSON.stringify(arg)
-  ).join(' ')}\n`;
-  fs.appendFileSync(logFile, message, { encoding: 'utf8' });
-}
-
-// 重写 console.log
-console.log = function(...args) {
-  originalLog.apply(console, args);
-  writeToLog('INFO', args);
-};
-
-// 重写 console.error
-console.error = function(...args) {
-  originalError.apply(console, args);
-  writeToLog('ERROR', args);
-};
-
-// 重写 console.warn
-console.warn = function(...args) {
-  originalWarn.apply(console, args);
-  writeToLog('WARN', args);
-};
+// 接管 console.log/warn/error，按进程分文件，并自动捕获崩溃堆栈
+const logger = require('./logger')('bridge');
 
 // ==================== 配置 ====================
 const NAPCAT_API = process.env.NAPCAT_API || 'http://127.0.0.1:3000';

@@ -104,6 +104,19 @@
 |--------|------|--------|
 | `CHAT_DELAY_MS` | 行间发送延迟（毫秒） | `600` |
 
+### 日志配置
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `LOG_LEVEL` | 控制台最低日志级别（`DEBUG`/`INFO`/`WARN`/`ERROR`），文件始终写全量 | `INFO` |
+| `LOG_RETENTION_DAYS` | 旧日志保留天数，超期自动清理；设为 `0` 关闭清理 | `14` |
+
+日志按进程分文件存放于 `logs/`：
+- `bot-YYYY-MM-DD.log` / `web-YYYY-MM-DD.log` / `bridge-YYYY-MM-DD.log` / `launcher-YYYY-MM-DD.log`
+- `crash-YYYY-MM-DD.log`：崩溃堆栈（仅在进程崩溃时产生）
+
+每行格式：`[时间] [级别] [进程] [分类] 内容`，分类含 `NET`/`AI`/`CMD`/`BRIDGE`/`WEB`/`SYSTEM`/`CRASH`。  
+排查断联只需：`grep "[NET]" logs/bot-*.log`；排查崩溃：`grep "CRASH" logs/launcher-*.log` 或直接看 Web 端 `/crashes`。
+
 ### QQ 互通配置
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
@@ -241,6 +254,13 @@ Claude 调用次数: 2
 ```
 
 ## 🔧 故障排除
+
+### 断联 / 崩溃排查
+机器人突然掉线或进程崩溃时，按这个顺序找原因：
+1. **看 Web 端崩溃页**：访问 `/crashes`，若有记录直接看堆栈。
+2. **看断联原因**：`grep "[NET]" logs/bot-*.log`，重点看 `[WARN]` 行——`被踢出服务器`、`服务器下发 disconnect`、`连接结束` 会带上服务器给的原始原因（白名单/多登录/封禁等）。
+3. **看启动器日志**：`grep "CRASH" logs/launcher-*.log`，能看到哪个子进程在什么时间以什么退出码挂掉。
+4. **看进程自己的日志**：`bot-*.log` / `web-*.log` / `bridge-*.log`，崩溃前的最后几行通常是案发现场。
 
 - **连接超时/ECONNRESET**  
   网络不稳定或服务器问题，自动重连会处理。可检查服务器地址和端口是否正确，以及防火墙/安全组是否放行。

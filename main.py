@@ -5,11 +5,53 @@ import sys
 import shutil
 import signal
 import time
+import threading
+from datetime import datetime
 
 # 全局进程对象，供信号处理函数使用
 proc_bot = None
 proc_web = None
 proc_bridge = None  # QQ 桥接进程
+
+# ==================== 启动器日志 ====================
+LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(LOG_DIR, exist_ok=True)
+_log_lock = threading.Lock()
+
+def _log_file():
+    """返回当天的启动器日志文件路径。"""
+    return os.path.join(LOG_DIR, f'launcher-{datetime.now().strftime("%Y-%m-%d")}.log')
+
+def launcher_log(tag, message, level='INFO'):
+    """写一行启动器日志：[时间] [级别] [tag] message，同时打印到控制台。"""
+    line = f'[{datetime.now().isoformat()}] [{level}] [{tag}] {message}'
+    with _log_lock:
+        try:
+            with open(_log_file(), 'a', encoding='utf-8') as f:
+                f.write(line + '\n')
+        except Exception as e:
+            print(f'[launcher] 写日志失败: {e}')
+    print(line, flush=True)
+
+def _stream_reader(proc, tag):
+    """逐行读取子进程输出，加前缀写入启动器日志并打印。"""
+    try:
+        for raw in iter(proc.stdout.readline, b''):
+            if not raw:
+                break
+            try:
+                text = raw.decode('utf-8', errors='replace').rstrip('\r\n')
+            except Exception:
+                text = repr(raw)
+            if text:
+                launcher_log(tag, text)
+    except Exception as e:
+        launcher_log(tag, f'读取输出线程异常: {e}', level='ERROR')
+    finally:
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
 
 def load_dotenv(path='.env'):
     if not os.path.exists(path):
@@ -107,15 +149,28 @@ def main():
     # 检查桥接脚本是否存在（可选）
     bridge_exists = os.path.exists(bridge_script)
 
-    print('Starting Node.js bot (bot.js) and web interface (web.js)...')
+    launcher_log('LAUNCHER', '启动 Node.js bot (bot.js) 与 web 界面 (web.js)...')
     if bridge_exists:
-        print('Starting QQ bridge (qq-bridge.js)...')
+        launcher_log('LAUNCHER', '启动 QQ 桥接 (qq-bridge.js)...')
 
     global proc_bot, proc_web, proc_bridge
-    proc_bot = subprocess.Popen(['node', bot_script], env=child_env)
-    proc_web = subprocess.Popen(['node', web_script], env=child_env)
+    # 子进程输出统一捕获：stdout 合并 stderr，逐行打 tag 写入 launcher 日志
+    proc_bot = subprocess.Popen(
+        ['node', bot_script], env=child_env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    threading.Thread(target=_stream_reader, args=(proc_bot, 'bot'), daemon=True).start()
+    proc_web = subprocess.Popen(
+        ['node', web_script], env=child_env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    threading.Thread(target=_stream_reader, args=(proc_web, 'web'), daemon=True).start()
     if bridge_exists:
-        proc_bridge = subprocess.Popen(['node', bridge_script], env=child_env)
+        proc_bridge = subprocess.Popen(
+            ['node', bridge_script], env=child_env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        threading.Thread(target=_stream_reader, args=(proc_bridge, 'bridge'), daemon=True).start()
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -134,17 +189,26 @@ def main():
 
         # 如果 bot 进程退出，记录日志并释放引用（不终止其他进程）
         if proc_bot and bot_ret is not None:
-            print(f'Bot process exited with code {bot_ret}, but others continue.')
+            level = 'CRASH' if bot_ret != 0 else 'INFO'
+            launcher_log('bot', f'进程退出，code={bot_ret}，其他进程继续运行', level=level)
+            if bot_ret != 0:
+                launcher_log('bot', '崩溃堆栈详见 logs/crash-*.log', level='CRASH')
             proc_bot = None
 
         # 如果 web 进程退出，记录日志并释放引用（不终止其他进程）
         if proc_web and web_ret is not None:
-            print(f'Web process exited with code {web_ret}, but others continue.')
+            level = 'CRASH' if web_ret != 0 else 'INFO'
+            launcher_log('web', f'进程退出，code={web_ret}，其他进程继续运行', level=level)
+            if web_ret != 0:
+                launcher_log('web', '崩溃堆栈详见 logs/crash-*.log', level='CRASH')
             proc_web = None
 
         # 如果桥接进程退出，记录日志并释放引用（不终止其他进程）
         if proc_bridge and bridge_ret is not None:
-            print(f'Bridge process exited with code {bridge_ret}, but others continue.')
+            level = 'CRASH' if bridge_ret != 0 else 'INFO'
+            launcher_log('bridge', f'进程退出，code={bridge_ret}，其他进程继续运行', level=level)
+            if bridge_ret != 0:
+                launcher_log('bridge', '崩溃堆栈详见 logs/crash-*.log', level='CRASH')
             proc_bridge = None
 
         time.sleep(0.5)
@@ -157,7 +221,7 @@ def main():
     if proc_bridge and proc_bridge.poll() is None:
         proc_bridge.wait()
 
-    print('Bot and web interface stopped.')
+    launcher_log('LAUNCHER', '所有子进程已停止')
 
 if __name__ == '__main__':
     main()

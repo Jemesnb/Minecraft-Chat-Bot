@@ -5,3 +5,10 @@ logs/
 .bot_port
 banned.json
 cdk.json
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
+# Claude Code 本地设置/状态
+.claude/

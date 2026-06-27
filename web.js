@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
 
+// 接管 console.log/warn/error，按进程分文件，并自动捕获崩溃堆栈
+const logger = require('./logger')('web');
+
 const app = express();
 // 从环境变量读取端口，默认 3000（可通过 .env 中的 WEB_PORT 覆盖）
 const PORT = process.env.WEB_PORT || 3000;
@@ -150,10 +153,22 @@ app.get('/api/logs', (req, res) => {
     fs.readdir(LOG_DIR, (err, files) => {
         if (err) return res.status(500).json({ error: '无法读取日志目录' });
         const logFiles = files
-            .filter(f => f.endsWith('.log'))
+            .filter(f => f.endsWith('.log') && !f.startsWith('crash-'))
             .map(f => ({ name: f, size: fs.statSync(path.join(LOG_DIR, f)).size }))
             .sort((a, b) => b.name.localeCompare(a.name));
         res.json(logFiles);
+    });
+});
+
+// 崩溃日志列表（只列 crash-*.log）
+app.get('/api/crashes', (req, res) => {
+    fs.readdir(LOG_DIR, (err, files) => {
+        if (err) return res.status(500).json({ error: '无法读取日志目录' });
+        const crashFiles = files
+            .filter(f => f.startsWith('crash-') && f.endsWith('.log'))
+            .map(f => ({ name: f, size: fs.statSync(path.join(LOG_DIR, f)).size }))
+            .sort((a, b) => b.name.localeCompare(a.name));
+        res.json(crashFiles);
     });
 });
 
@@ -326,6 +341,11 @@ app.get('/logs', (req, res) => {
 <body>
     <div class="container">
         <h1>📋 日志查看器</h1>
+        <div class="nav" style="margin-bottom:15px;">
+            <a href="/logs" style="margin-right:10px;color:#1976d2;text-decoration:none;">普通日志</a>
+            <a href="/crashes" style="margin-right:10px;color:#1976d2;text-decoration:none;">崩溃日志</a>
+            <a href="/control" style="color:#1976d2;text-decoration:none;">远程控制</a>
+        </div>
         <div class="file-list">
             <label>选择日志文件：</label>
             <select id="fileSelect" onchange="loadLogFile()"></select>
@@ -414,6 +434,120 @@ app.get('/logs', (req, res) => {
 
         refreshFileList();
         setInterval(refreshFileList, 10000);
+    </script>
+</body>
+</html>
+    `);
+});
+
+// 崩溃日志查看页（复用 /api/logs/:filename 读取接口，仅列表来源不同）
+app.get('/crashes', (req, res) => {
+    res.send(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>崩溃日志 - MC Bot</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { text-align: center; }
+        .nav { margin-bottom: 15px; }
+        .nav a { margin-right: 10px; color: #1976d2; text-decoration: none; }
+        .file-list { margin-bottom: 20px; }
+        .file-list select { width: 300px; padding: 5px; }
+        .log-content { background: #1e1e1e; color: #ff6b6b; padding: 10px; border-radius: 4px; font-family: monospace; height: 500px; overflow-y: auto; white-space: pre-wrap; }
+        .controls { margin: 10px  0; }
+        button { padding: 5px 10px; margin-right: 5px; }
+        .pagination { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💥 崩溃日志</h1>
+        <div class="nav">
+            <a href="/logs">← 普通日志</a>
+            <a href="/crashes">崩溃日志</a>
+            <a href="/control">远程控制</a>
+        </div>
+        <div class="file-list">
+            <label>选择崩溃文件：</label>
+            <select id="fileSelect" onchange="loadLogFile()"></select>
+            <button onclick="refreshFileList()">刷新列表</button>
+            <button onclick="clearCurrentLog()" style="background:#ff4444;color:white;">清空当前文件</button>
+        </div>
+        <div class="controls">
+            <button onclick="prevPage()">上一页</button>
+            <span id="pageInfo">第 1 页</span>
+            <button onclick="nextPage()">下一页</button>
+            <input type="number" id="pageSize" value="100" min="1" style="width:60px;"> 行/页
+            <button onclick="loadLogFile()">跳转</button>
+            <button onclick="downloadLog()">下载</button>
+        </div>
+        <div class="log-content" id="logContent">暂无崩溃记录</div>
+    </div>
+
+    <script>
+        let currentFile = '';
+        let currentPage = 1;
+        let pageSize = 100;
+        let totalLines = 0;
+
+        async function refreshFileList() {
+            const res = await fetch('/api/crashes');
+            const files = await res.json();
+            const select = document.getElementById('fileSelect');
+            select.innerHTML = files.map(f => \`<option value="\${f.name}">\${f.name} (\${(f.size/1024).toFixed(2)} KB)</option>\`).join('');
+            if (files.length > 0) {
+                currentFile = files[0].name;
+                loadLogFile();
+            } else {
+                document.getElementById('logContent').innerText = '暂无崩溃记录 🎉';
+            }
+        }
+
+        async function loadLogFile() {
+            const select = document.getElementById('fileSelect');
+            currentFile = select.value || currentFile;
+            if (!currentFile) return;
+
+            pageSize = parseInt(document.getElementById('pageSize').value) || 100;
+            const url = \`/api/logs/\${encodeURIComponent(currentFile)}?page=\${currentPage}&size=\${pageSize}\`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (res.ok) {
+                totalLines = data.totalLines;
+                document.getElementById('logContent').innerText = data.lines.join('\\n') || '（空）';
+                document.getElementById('pageInfo').innerText = \`第 \${data.page} 页 / 共 \${Math.ceil(totalLines/pageSize)} 页 (\${totalLines} 行)\`;
+            } else {
+                alert('加载失败：' + data.error);
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 1) { currentPage--; loadLogFile(); }
+        }
+        function nextPage() { currentPage++; loadLogFile(); }
+
+        async function clearCurrentLog() {
+            if (!currentFile || !confirm('确定要清空该崩溃文件吗？')) return;
+            const res = await fetch(\`/api/logs/\${encodeURIComponent(currentFile)}/clear\`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) { alert('已清空'); loadLogFile(); }
+            else { alert('清空失败：' + data.error); }
+        }
+
+        function downloadLog() {
+            if (!currentFile) return;
+            fetch(\`/api/logs/\${encodeURIComponent(currentFile)}\`).then(res => res.blob()).then(blob => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = currentFile;
+                a.click();
+            });
+        }
+
+        refreshFileList();
     </script>
 </body>
 </html>
@@ -510,5 +644,6 @@ app.get('/control', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Web 配置界面运行在 http://0.0.0.0:${PORT}`);
     console.log(`日志查看: http://0.0.0.0:${PORT}/logs`);
+    console.log(`崩溃日志: http://0.0.0.0:${PORT}/crashes`);
     console.log(`远程控制: http://0.0.0.0:${PORT}/control`);
 });

@@ -5,48 +5,9 @@ const path = require('path')
 const http = require('http')
 const url = require('url')
 
-// ==================== 日志初始化 ====================
-const LOG_DIR = path.join(__dirname, 'logs')
-if (!fs.existsSync(LOG_DIR)) {
-  fs.mkdirSync(LOG_DIR, { recursive: true })
-}
-
-// 获取当前日期作为日志文件名 (YYYY-MM-DD)
-const dateStr = new Date().toISOString().slice(0, 10)
-const logFile = path.join(LOG_DIR, `${dateStr}.log`)
-
-// 保存原始控制台方法
-const originalLog = console.log
-const originalError = console.error
-const originalWarn = console.warn
-
-// 辅助函数：写入日志文件（同步追加）
-function writeToLog(level, args) {
-  const timestamp = new Date().toISOString()
-  const message = `[${timestamp}] [${level}] ${Array.from(args).map(arg => 
-    typeof arg === 'string' ? arg : JSON.stringify(arg)
-  ).join(' ')}\n`
-
-  fs.appendFileSync(logFile, message, { encoding: 'utf8' })
-}
-
-// 重写 console.log
-console.log = function(...args) {
-  originalLog.apply(console, args)
-  writeToLog('INFO', args)
-}
-
-// 重写 console.error
-console.error = function(...args) {
-  originalError.apply(console, args)
-  writeToLog('ERROR', args)
-}
-
-// 重写 console.warn
-console.warn = function(...args) {
-  originalWarn.apply(console, args)
-  writeToLog('WARN', args)
-}
+// ==================== 日志初始化（共享模块）====================
+// 接管 console.log/warn/error，按进程分文件，并自动捕获崩溃堆栈。
+const logger = require('./logger')('bot')
 
 // ==================== 全局配置与环境变量 ====================
 const host = process.env.MC_HOST || 'localhost'
@@ -270,7 +231,7 @@ function startApiServer() {
             if (!fullCommand.startsWith('/')) fullCommand = '/' + fullCommand
             if (bot && bot.entity) {
               bot.chat(fullCommand)
-              console.log(`[Web远程] 执行命令: ${fullCommand}`)
+              logger.log('CMD', 'INFO', `[Web远程] 执行命令: ${fullCommand}`)
             } else {
               res.writeHead(503)
               return res.end(JSON.stringify({ error: 'Bot not connected' }))
@@ -279,7 +240,7 @@ function startApiServer() {
             // 私聊发送
             if (bot && bot.entity) {
               bot.whisper(target, command)
-              console.log(`[Web远程] 私聊 ${target}: ${command}`)
+              logger.log('CMD', 'INFO', `[Web远程] 私聊 ${target}: ${command}`)
             } else {
               res.writeHead(503)
               return res.end(JSON.stringify({ error: 'Bot not connected' }))
@@ -288,7 +249,7 @@ function startApiServer() {
             // 默认公开聊天
             if (bot && bot.entity) {
               bot.chat(command)
-              console.log(`[Web远程] 发言: ${command}`)
+              logger.log('CMD', 'INFO', `[Web远程] 发言: ${command}`)
             } else {
               res.writeHead(503)
               return res.end(JSON.stringify({ error: 'Bot not connected' }))
@@ -372,7 +333,7 @@ function shouldPushToBridge(message, sender) {
 
 // 异步推送消息到桥接服务
 function pushToBridge(username, message, isWhisper = false) {
-  console.log(`[Bot] 尝试推送: ${username} -> ${message}`);
+  logger.log('BRIDGE', 'DEBUG', `尝试推送: ${username} -> ${message}`)
   if (!QQ_BRIDGE_URL) return
   // 只推送公开聊天（私聊不推送）
   if (isWhisper) return
@@ -385,7 +346,7 @@ function pushToBridge(username, message, isWhisper = false) {
       isWhisper,
       time: Date.now()
     })
-  }).catch(e => console.warn('[Bot] 推送消息到桥接服务失败:', e.message))
+  }).catch(e => logger.warn('BRIDGE', '推送消息到桥接服务失败:', e.message))
 }
 
 // ==================== 创建机器人实例 ====================
@@ -402,15 +363,15 @@ function createBotInstance() {
   })
 
   bot.on('login', () => {
-    console.log('Logged in as', bot.username)
+    logger.log('NET', 'INFO', `已登录为 ${bot.username}（重连计数已重置）`)
     if (INITIAL_ACTION) {
-      try { bot.chat(INITIAL_ACTION) } catch (e) { console.warn('INITIAL_ACTION failed:', e) }
+      try { bot.chat(INITIAL_ACTION) } catch (e) { logger.warn('NET', 'INITIAL_ACTION 失败:', e) }
     }
     reconnectAttempts = 0
     if (bot._client && bot._client.socket && bot._client.socket.localPort) {
-      console.log(`本地端口: ${bot._client.socket.localPort}`)
+      logger.log('NET', 'INFO', `本地端口: ${bot._client.socket.localPort}`)
     } else {
-      console.warn('无法获取本地端口')
+      logger.warn('NET', '无法获取本地端口')
     }
   })
 
@@ -430,26 +391,62 @@ function createBotInstance() {
   })
 
   bot.on('message', (msg) => {
-    try { console.log('服务器消息:', msg.toString()) } catch (e) { console.log('服务器消息(无法转换):', msg) }
+    try { logger.log('NET', 'DEBUG', '服务器消息:', msg.toString()) } catch (e) { logger.log('NET', 'DEBUG', '服务器消息(无法转换):', msg) }
   })
 
-  bot.on('error', (err) => console.error('Bot error', err))
-  bot.on('kicked', (reason) => console.warn('Bot 被踢, 原因:', reason))
+  // ==================== 断联根因捕获 ====================
+  // 关键：把 mineflayer 与底层 minecraft-protocol 的断开原因全部记下来，
+  // 服务器主动踢人/白名单/多登录等原因都从这些事件里拿到。
+  bot.on('error', (err) => {
+    logger.error('NET', '连接错误:', err && err.stack ? err.stack : err)
+  })
+
+  bot.on('kicked', (reason, loggedIn) => {
+    // reason 通常是 JSON 字符串（如 {"text":"..."}），尽量解析后同时记录
+    let parsed = null
+    if (typeof reason === 'string') {
+      try { parsed = JSON.parse(reason) } catch (e) { parsed = null }
+    }
+    if (parsed !== null) {
+      logger.warn('NET', `被踢出服务器 loggedIn=${loggedIn} 原始=${reason} 解析=${JSON.stringify(parsed)}`)
+    } else {
+      logger.warn('NET', `被踢出服务器 loggedIn=${loggedIn} 原因:`, reason)
+    }
+  })
+
   bot.on('end', () => {
-    console.log('Bot disconnected')
+    logger.warn('NET', '连接结束（end 事件），准备重连')
     reconnect()
   })
+
+  // 底层客户端事件：服务器主动下发的断开文本（最常被忽略、却是"莫名其妙断联"的真正出处）
+  if (bot._client) {
+    bot._client.on('disconnect', (packet) => {
+      const reason = packet && (packet.reason || packet.message)
+      let text = reason
+      if (typeof reason === 'string') {
+        try { text = JSON.parse(reason) } catch (e) { text = reason }
+      }
+      logger.warn('NET', '服务器下发 disconnect:', text)
+    })
+    bot._client.on('packet_error', (packet) => {
+      logger.warn('NET', '服务器下发 packet_error:', packet && (packet.message || packet.errorMessage || packet))
+    })
+    bot._client.on('end', () => {
+      logger.warn('NET', '底层 socket 已断开')
+    })
+  }
 
   return bot
 }
 
 function reconnect() {
   if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-    console.log('达到最大重连尝试次数，停止重连')
+    logger.warn('NET', '达到最大重连尝试次数，停止重连')
     return
   }
   reconnectAttempts++
-  console.log(`尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS === Infinity ? '∞' : MAX_RECONNECT_ATTEMPTS})，等待 ${RECONNECT_DELAY/1000} 秒...`)
+  logger.log('NET', 'INFO', `尝试重连 (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS === Infinity ? '∞' : MAX_RECONNECT_ATTEMPTS})，等待 ${RECONNECT_DELAY/1000} 秒...`)
   setTimeout(createBotInstance, RECONNECT_DELAY)
 }
 
@@ -490,14 +487,14 @@ async function callDeepseek(query, sender) {
   if (DEEPSEEK_API_KEY) headers['Authorization'] = `Bearer ${DEEPSEEK_API_KEY}`
 
   try {
-    console.log(`[Deepseek] 调用 URL: ${url}`)
+    logger.log('AI', 'INFO', `[Deepseek] 调用 URL: ${url}`)
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     const text = await resp.text()
-    console.log('[Deepseek] 原始响应:', text)
+    logger.log('AI', 'DEBUG', `[Deepseek] 原始响应: ${text}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`)
     return JSON.parse(text)
   } catch (err) {
-    console.error('[Deepseek] 异常:', err)
+    logger.error('AI', '[Deepseek] 异常:', err)
     throw err
   }
 }
@@ -529,14 +526,14 @@ async function callGemini(query, sender) {
   const headers = { 'Content-Type': 'application/json' }
 
   try {
-    console.log(`[Gemini] 调用 URL: ${url}`)
+    logger.log('AI', 'INFO', `[Gemini] 调用 URL: ${url}`)
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     const text = await resp.text()
-    console.log('[Gemini] 原始响应:', text)
+    logger.log('AI', 'DEBUG', `[Gemini] 原始响应: ${text}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`)
     return JSON.parse(text)
   } catch (err) {
-    console.error('[Gemini] 异常:', err)
+    logger.error('AI', '[Gemini] 异常:', err)
     throw err
   }
 }
@@ -569,14 +566,14 @@ async function callGPT(query, sender) {
   if (GPT_API_KEY) headers['Authorization'] = `Bearer ${GPT_API_KEY}`
 
   try {
-    console.log(`[GPT] 调用 URL: ${url}`)
+    logger.log('AI', 'INFO', `[GPT] 调用 URL: ${url}`)
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     const text = await resp.text()
-    console.log('[GPT] 原始响应:', text)
+    logger.log('AI', 'DEBUG', `[GPT] 原始响应: ${text}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`)
     return JSON.parse(text)
   } catch (err) {
-    console.error('[GPT] 异常:', err)
+    logger.error('AI', '[GPT] 异常:', err)
     throw err
   }
 }
@@ -609,14 +606,14 @@ async function callGrok(query, sender) {
   if (GROK_API_KEY) headers['Authorization'] = `Bearer ${GROK_API_KEY}`
 
   try {
-    console.log(`[Grok] 调用 URL: ${url}`)
+    logger.log('AI', 'INFO', `[Grok] 调用 URL: ${url}`)
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     const text = await resp.text()
-    console.log('[Grok] 原始响应:', text)
+    logger.log('AI', 'DEBUG', `[Grok] 原始响应: ${text}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`)
     return JSON.parse(text)
   } catch (err) {
-    console.error('[Grok] 异常:', err)
+    logger.error('AI', '[Grok] 异常:', err)
     throw err
   }
 }
@@ -653,14 +650,14 @@ async function callClaude(query, sender) {
   }
 
   try {
-    console.log(`[Claude] 调用 URL: ${url}`)
+    logger.log('AI', 'INFO', `[Claude] 调用 URL: ${url}`)
     const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
     const text = await resp.text()
-    console.log('[Claude] 原始响应:', text)
+    logger.log('AI', 'DEBUG', `[Claude] 原始响应: ${text}`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${text}`)
     return JSON.parse(text)
   } catch (err) {
-    console.error('[Claude] 异常:', err)
+    logger.error('AI', '[Claude] 异常:', err)
     throw err
   }
 }
@@ -733,11 +730,11 @@ async function handleReply(replyText, sender, isWhisper = false) {
           let cmdText = cmd.trim()
           if (!cmdText.startsWith('/')) cmdText = '/' + cmdText
           try {
-            console.log('执行命令:', cmdText)
+            logger.log('CMD', 'INFO', '执行命令:', cmdText)
             // 命令始终公开执行（即使是通过私聊触发的）
             bot.chat(cmdText)
           } catch (e) {
-            console.warn('执行命令失败', cmdText, e)
+            logger.warn('CMD', '执行命令失败', cmdText, e)
           }
           await new Promise(r => setTimeout(r, 600)) // 命令间隔
         }
@@ -756,9 +753,9 @@ async function handleReply(replyText, sender, isWhisper = false) {
         for (const part of parts) {
           if (!part.startsWith('/')) continue
           try {
-            console.log('执行命令(fallback):', part)
+            logger.log('CMD', 'INFO', '执行命令(fallback):', part)
             bot.chat(part)  // 命令公开执行
-          } catch (e) { console.warn('执行命令失败', part, e) }
+          } catch (e) { logger.warn('CMD', '执行命令失败', part, e) }
           await new Promise(r => setTimeout(r, 600))
         }
         // 如果有非命令部分，也发送聊天（这里简单将整个回复作为聊天，但命令已提取，剩余部分已丢弃）
@@ -887,10 +884,10 @@ async function processMessage(m) {
     for (const cmd of commands) {
       const finalCmd = cmd.replace(/\{\}/g, playerName) // 替换所有 {}
       try {
-        console.log('执行 CDK 命令:', finalCmd)
+        logger.log('CMD', 'INFO', '执行 CDK 命令:', finalCmd)
         bot.chat(finalCmd)
       } catch (e) {
-        console.warn('执行 CDK 命令失败', finalCmd, e)
+        logger.warn('CMD', '执行 CDK 命令失败', finalCmd, e)
       }
       await new Promise(r => setTimeout(r, 600)) // 命令间隔
     }
@@ -991,7 +988,7 @@ async function processMessage(m) {
 
   } catch (err) {
     const modelName = isDeepseek ? 'Deepseek' : (isGemini ? 'Gemini' : (isGPT ? 'GPT' : (isGrok ? 'Grok' : 'Claude')))
-    console.error(`[${modelName}] 请求错误:`, err)
+    logger.error('AI', `[${modelName}] 请求错误:`, err)
     try {
       const errMsg = `${modelName} 请求失败: ` + String(err).slice(0, 100)
       if (m.whisper) {
@@ -1011,7 +1008,7 @@ setInterval(() => {
   for (const m of messages) {
     // 并发处理每条消息，不等待
     processMessage(m).catch(err => {
-      console.error('处理消息时出现未捕获错误:', err)
+      logger.error('SYSTEM', '处理消息时出现未捕获错误:', err)
     })
   }
 }, 2000)
